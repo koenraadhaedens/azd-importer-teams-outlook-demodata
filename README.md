@@ -205,6 +205,9 @@ and a new azd environment. No settings from another deployment are required.
 
 ### Azure portal Cloud Shell (PowerShell)
 
+For a copy-paste walkthrough using already-published images, see
+[Install from Azure Cloud Shell](installtocloudshell.md).
+
 #### 1. Prepare the tenant and container images
 
 - Use an isolated CDX tenant and an Azure subscription in that same tenant.

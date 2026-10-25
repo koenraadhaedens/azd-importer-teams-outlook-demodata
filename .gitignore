@@ -18,3 +18,4 @@ build/
 *.key
 infra/*.json.tmp
 config/*.local.yaml
+config/*.local.json

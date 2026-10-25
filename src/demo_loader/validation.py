@@ -63,11 +63,33 @@ def load_yaml(data: bytes, maximum: int = 65536) -> dict[str, Any]:
     return value
 
 
+def unique_json_mapping(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise InputError("JSON requires unique mapping keys")
+        result[key] = value
+    return result
+
+
+def load_json(data: bytes, maximum: int = 65536) -> dict[str, Any]:
+    if len(data) > maximum:
+        raise InputError("File exceeds maximum configuration size")
+    try:
+        value = json.loads(data.decode("utf-8"), object_pairs_hook=unique_json_mapping)
+        json.dumps(value, allow_nan=False)
+    except (UnicodeError, ValueError, RecursionError) as exc:
+        raise InputError("Invalid or non-finite JSON configuration") from exc
+    if not isinstance(value, dict):
+        raise InputError("JSON configuration must be an object")
+    return value
+
+
 def load_config(users_path: Path, resources_path: Path) -> tuple[Users, Resources]:
     try:
         return (
-            Users.model_validate(load_yaml(users_path.read_bytes())),
-            Resources.model_validate(load_yaml(resources_path.read_bytes())),
+            Users.model_validate(load_json(users_path.read_bytes())),
+            Resources.model_validate(load_json(resources_path.read_bytes())),
         )
     except OSError as exc:
         raise InputError("Required user/resource configuration is missing or unreadable") from exc

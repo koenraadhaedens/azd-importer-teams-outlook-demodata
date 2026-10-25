@@ -10,6 +10,7 @@ data
 .mypy_cache
 .ruff_cache
 config/*.local.yaml
+config/*.local.json
 *.pem
 *.pfx
 *.key

@@ -27,7 +27,7 @@ async def test_throttling_and_mail_payload() -> None:
     async def sleep(value: float) -> None:
         waits.append(value)
 
-    users, resources = load_config(Path("config/demo-users.yaml"), Path("config/resources.yaml"))
+    users, resources = load_config(Path("config/demo-users.json"), Path("config/resources.json"))
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         graph = GraphGateway(client, token, users, resources, sleep)
         graph.resolved = {"adele": str(uuid4())}
@@ -52,7 +52,7 @@ async def test_no_retry_ambiguous_posts(status: int) -> None:
     async def token() -> str:
         return "test"
 
-    users, resources = load_config(Path("config/demo-users.yaml"), Path("config/resources.yaml"))
+    users, resources = load_config(Path("config/demo-users.json"), Path("config/resources.json"))
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         graph = GraphGateway(client, token, users, resources)
         with pytest.raises(GraphError) as caught:
@@ -71,7 +71,7 @@ async def test_teams_delegated_messages_and_replies() -> None:
     async def token() -> str:
         raise AssertionError("Teams must never use app-only tokens")
 
-    users, _ = load_config(Path("config/demo-users.yaml"), Path("config/resources.yaml"))
+    users, _ = load_config(Path("config/demo-users.json"), Path("config/resources.json"))
     resources = Resources.model_validate(
         {"channels": {"launch": {"teamId": str(uuid4()), "channelId": "19:demo@thread.tacv2"}}}
     )

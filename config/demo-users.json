@@ -1,0 +1,29 @@
+{
+  "users": [
+    {
+      "key": "koenraad",
+      "displayName": "Koenraad Haedens",
+      "userPrincipalName": "koenraad@mtttraining.be"
+    },
+    {
+      "key": "alex",
+      "displayName": "Alex Wilber",
+      "userPrincipalName": "alexw@m365cpi55452589.onmicrosoft.com"
+    },
+    {
+      "key": "christie",
+      "displayName": "Christie Cline",
+      "userPrincipalName": "christiec@m365cpi55452589.onmicrosoft.com"
+    },
+    {
+      "key": "diego",
+      "displayName": "Diego Siciliani",
+      "userPrincipalName": "diegos@m365cpi55452589.onmicrosoft.com"
+    },
+    {
+      "key": "megan",
+      "displayName": "Megan Bowen",
+      "userPrincipalName": "meganb@m365cpi55452589.onmicrosoft.com"
+    }
+  ]
+}

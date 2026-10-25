@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$Scenario,
-    [string]$Users = "config\demo-users.yaml",
-    [string]$Resources = "config\resources.yaml"
+    [string]$Users = "config\demo-users.json",
+    [string]$Resources = "config\resources.json"
 )
 $ErrorActionPreference = "Stop"
 python -m demo_loader.cli $Scenario --users $Users --resources $Resources

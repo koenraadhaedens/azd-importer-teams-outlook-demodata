@@ -96,10 +96,32 @@ and app-role-assignment authorization. **Delegated Teams consent and enterprise-
 assignments remain administrator steps**, as does Exchange mailbox scope setup.
 See [Entra setup](docs/entra-setup.md) for bootstrap and migration details.
 
-Replace example UPNs in [config/demo-users.yaml](config/demo-users.yaml); exactly
+Replace UPNs in [config/demo-users.json](config/demo-users.json); exactly
 five distinct keys and UPNs are mandatory. Configure channel aliases in
-[config/resources.yaml](config/resources.yaml). Never put credentials in either.
+[config/resources.json](config/resources.json). Never put credentials in either.
 Keep completed configurations out of public commits.
+
+User/resource configuration is JSON so both the app and Cloud Shell can read the
+same files without a PowerShell YAML module. Scenario documents remain YAML.
+Channel mappings contain a `teamId` UUID and a `channelId`; IDs belong in this
+configuration, not in scenario documents. An empty `channels` object is valid at
+startup, but Teams plans fail until their aliases are configured. For example:
+
+```json
+{
+  "channels": {
+    "launch": {
+      "teamId": "00000000-0000-0000-0000-000000000001",
+      "channelId": "19:example@thread.tacv2"
+    }
+  }
+}
+```
+
+The Docker build packages both JSON files into the app image. After changing
+them, build and manually publish a new image and select its new tag/digest before
+deployment. If you override `USERS_FILE` / `RESOURCES_FILE`, update those settings
+to JSON paths too; YAML user/resource configuration is no longer read.
 
 ```powershell
 python -m venv .venv
@@ -284,6 +306,135 @@ remains dormant and Caddy returns HTTP 503 until final deployment.
    demo users or allowed groups to the enterprise app. Use
    [setup-entra.ps1](scripts/setup-entra.ps1) with the generated WEB_CLIENT_ID, or
    the portal. Registration alone intentionally grants neither consent nor access.
+
+For command-line assignments, read the five existing demo users from
+[config/demo-users.json](config/demo-users.json), rather than maintaining a
+separate UPN list. PowerShell's JSON reader is built in; no converter module is
+needed:
+
+```powershell
+$demoConfig = Get-Content (Join-Path "config" "demo-users.json") -Raw -ErrorAction Stop |
+    ConvertFrom-Json -ErrorAction Stop
+$demoUpns = @($demoConfig.users | ForEach-Object {
+    if ([string]::IsNullOrWhiteSpace($_.userPrincipalName)) {
+        throw "Each configured demo user must have a userPrincipalName."
+    }
+    $_.userPrincipalName
+})
+if ($demoUpns.Count -ne 5 -or @($demoUpns | Sort-Object -Unique).Count -ne 5) {
+    throw "config/demo-users.json must contain exactly five distinct demo-user UPNs."
+}
+$demoUpns
+```
+
+Resolve these UPNs to Entra object IDs and include the configured operators:
+
+```powershell
+$operatorConfig = azd env get-value OPERATOR_IDS
+if ($LASTEXITCODE -ne 0 -or -not $operatorConfig) {
+    throw "Could not read configured operator IDs."
+}
+if ($operatorConfig.Trim().StartsWith("[")) {
+    $allowedIds = @(($operatorConfig | ConvertFrom-Json -ErrorAction Stop))
+} else {
+    $allowedIds = @($operatorConfig.Trim())
+}
+foreach ($id in $allowedIds) { $null = [guid]::Parse($id) }
+foreach ($upn in $demoUpns) {
+    $id = az ad user show --id $upn --query id --output tsv
+    if ($LASTEXITCODE -ne 0 -or -not $id) {
+        throw "Could not resolve configured demo user: $upn"
+    }
+    $allowedIds += $id.Trim()
+}
+```
+
+This reads existing accounts; it does not create users. The published app image
+must contain the same configuration: editing the deployment checkout does not
+update an already published image.
+
+For Azure CLI assignments, use the resolved `$allowedIds` and the generated
+`$webSpId` (`azd env get-value WEB_SERVICE_PRINCIPAL_ID`). Read all pages of
+existing assignments first, then add only missing principals. This is safe to
+rerun after a partially completed setup; do not delete existing assignments or
+ignore arbitrary Graph errors:
+
+```powershell
+$existingIds = @()
+$url = "https://graph.microsoft.com/v1.0/servicePrincipals/$webSpId/appRoleAssignedTo"
+do {
+    $response = az rest --method GET --url $url --output json
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not read existing enterprise-app assignments."
+    }
+    $page = ($response -join "`n") | ConvertFrom-Json -ErrorAction Stop
+    $existingIds += @($page.value | ForEach-Object { $_.principalId })
+    $url = $page.'@odata.nextLink'
+} while ($url)
+
+$bodyFile = [IO.Path]::GetTempFileName()
+try {
+    foreach ($id in ($allowedIds | Sort-Object -Unique)) {
+        if ($id -in $existingIds) {
+            Write-Host "Already assigned: $id"
+            continue
+        }
+        @{
+            principalId = $id
+            resourceId = $webSpId
+            appRoleId = "00000000-0000-0000-0000-000000000000"
+        } | ConvertTo-Json | Set-Content -Encoding utf8 $bodyFile
+
+        az rest --method POST `
+            --url "https://graph.microsoft.com/v1.0/servicePrincipals/$webSpId/appRoleAssignedTo" `
+            --headers "Content-Type=application/json" `
+            --body "@$bodyFile" `
+            --output none
+        if ($LASTEXITCODE -ne 0) {
+            throw "Enterprise-app assignment failed for $id."
+        }
+        $existingIds += $id
+        Write-Host "Assigned: $id"
+    }
+} finally {
+    Remove-Item -LiteralPath $bodyFile
+}
+```
+
+If using `az ad app permission admin-consent` in Cloud Shell, the portal-provided
+Azure CLI credential can fail with `not a supported MSI token audience` for
+`74658136-14ec-4630-ad9b-26e160ff0fc6`. This is a Cloud Shell credential limitation,
+not a problem with the runtime ACI identity. Authenticate Azure CLI explicitly
+for the audience requested by the error, using an authorized tenant administrator:
+
+```powershell
+$tenantId = azd env get-value AZURE_TENANT_ID
+$subscriptionId = azd env get-value AZURE_SUBSCRIPTION_ID
+$webClientId = azd env get-value WEB_CLIENT_ID
+
+az logout
+az login --tenant $tenantId --use-device-code `
+    --scope "74658136-14ec-4630-ad9b-26e160ff0fc6/.default"
+if ($LASTEXITCODE -ne 0) {
+    throw "Azure CLI administrator authentication failed."
+}
+az account set --subscription $subscriptionId
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not select the deployment subscription."
+}
+az ad app permission admin-consent --id $webClientId
+if ($LASTEXITCODE -ne 0) {
+    throw "Admin consent failed. An authorized tenant administrator must complete it."
+}
+```
+
+Azure CLI documents Global Administrator for this consent command. Signing in
+does not grant that role or bypass Conditional Access. If tenant policy blocks
+device-code authentication, complete consent in the Entra portal instead:
+**App registrations > the application matching WEB_CLIENT_ID > API permissions >
+Grant admin consent**. Azure CLI and azd authentication are separate; signing
+in with `azd auth login` alone does not fix this Azure CLI credential error.
+Consent does not replace the enterprise-app user/group assignments above.
 
 Allow permission propagation before starting the app. Key Vault is retained for
 optional future secrets; web authentication does not read it.

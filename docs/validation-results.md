@@ -57,8 +57,10 @@ release security tooling. Static success is not a claim of successful deployment
 
 - `.env.example`: blank tenant/application/operator/credential settings, example
   local ACME email; copy to ignored `.env` and fill securely.
-- `config/demo-users.yaml`: fictional contoso example UPNs; replace all five.
-- `config/resources.yaml`: empty channel mapping plus commented ID templates.
+- `config/demo-users.json`: five configured user mappings; verify them for the
+  target tenant before publishing the app image.
+- `config/resources.json`: empty channel mapping; configure real team/channel
+  IDs as described in the README.
 - `README.md` / `docs/*.md`: angle-bracket IDs, example custom domains and
   administrator commands are documentation, not deployed values.
 - `.github/workflows/azure-dev.yml`: GitHub environment variable references,
@@ -66,6 +68,31 @@ release security tooling. Static success is not a claim of successful deployment
 
 Infrastructure templates use parameter/environment references, not real tenant
 IDs or credentials. Valid scenario examples are deliberately dry-run-only.
+
+## JSON configuration follow-up
+
+- User/resource configuration moved to `config/demo-users.json` and
+  `config/resources.json`, preserving every existing user mapping and the empty
+  channel mapping. Scenario documents and scenario parsing remain YAML.
+- Runtime, CLI, environment examples, PowerShell validation defaults and Cloud
+  Shell assignment instructions now use JSON. No PowerShell YAML module is
+  required to read deployment configuration.
+- Added 25 configuration tests covering runtime startup, CLI defaults and
+  overrides, channel mappings, five-user constraints, duplicate JSON keys,
+  malformed/non-finite input and size limits.
+- Targeted configuration and existing YAML safeguard checks: **34 passed**.
+- Full Windows regression suite: **68 passed, 5 failed**. The same five failures
+  occurred before this migration: four expect older user mappings/scenario keys,
+  and one expects a tagless app image. No new failures were introduced, and user
+  mappings/image references were not reverted to satisfy those fixtures.
+- Ruff, mypy, repository checks and PowerShell script parsing passed.
+- The documented JSON/user-lookup commands passed with mocked Azure CLI calls
+  in native Windows PowerShell, including single and multiple operators.
+  Linux PowerShell container validation was blocked by the local Docker engine
+  returning HTTP 500 before container creation.
+- The new app image still needs to be built and manually published before Azure
+  can use the migrated configuration. No live deployment or message delivery
+  was performed for this change.
 
 ## Image-configuration follow-up
 

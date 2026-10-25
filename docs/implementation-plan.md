@@ -20,8 +20,9 @@ name is retained; no remote or history is rewritten.
    app-only mail, cancellation, dependencies, bounded timing, safe retries,
    duplicate protection, dry-run and redacted reports.
 5. Build the accessible server-rendered UI and tests of trust boundaries.
-6. Add a multi-stage container, ACI deployment with a Caddy TLS sidecar, Key Vault,
+6. Add a multi-stage container, ACI deployment with a Caddy TLS sidecar,
    managed identity, temporary ACI certificate/journal volumes, azd hooks and OIDC CI.
+   Provision no Key Vault or Log Analytics; use ACI container logs.
    State and replay protection can be lost on ACI lifecycle changes; this is an
    explicitly accepted demo-only tradeoff. Per the updated
    image-publishing requirement, use manually published images in an existing

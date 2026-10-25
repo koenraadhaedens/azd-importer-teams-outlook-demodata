@@ -27,11 +27,8 @@ module foundation 'modules/foundation.bicep' = {
 
 output AZURE_RESOURCE_GROUP string = group.name
 output AZURE_TENANT_ID string = subscription().tenantId
-output AZURE_KEY_VAULT_NAME string = foundation.outputs.vaultName
-output AZURE_KEY_VAULT_ENDPOINT string = foundation.outputs.vaultUrl
 output AZURE_IDENTITY_RESOURCE_ID string = foundation.outputs.identityId
 output AZURE_IDENTITY_CLIENT_ID string = foundation.outputs.identityClientId
 output AZURE_IDENTITY_PRINCIPAL_ID string = foundation.outputs.identityPrincipalId
 output ACI_NAME string = 'aci-${suffix}'
 output ACI_DNS_LABEL string = 'm365-${suffix}'
-output AZURE_LOG_WORKSPACE_NAME string = foundation.outputs.logWorkspaceName

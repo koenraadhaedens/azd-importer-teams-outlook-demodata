@@ -66,9 +66,10 @@ deployments, but the default ACI template disables it and provisions no storage.
 
 `/healthz` returns ready only after startup user resolution and journal recovery,
 and fails if the journal becomes unavailable. It contains no tenant details.
-ACI diagnostics feed Log Analytics; use container logs for operational failures,
-correlating the application run ID with Graph `client-request-id`. Do not enable
-raw body/header logging or capture authorization-code callback URLs.
+Use `az container logs` for application and Caddy operational failures,
+correlating the application run ID with Graph `client-request-id`. Log Analytics
+is not provisioned or connected to ACI; centralized retention is not configured.
+Do not enable raw body/header logging or capture authorization-code callback URLs.
 
 Check Caddy TLS renewal logs and HTTPS health regularly. Web client authentication
 is secretless; Azure Identity refreshes managed-identity assertions in memory.
@@ -92,6 +93,10 @@ The existing registry is not managed or deleted by this repository's Bicep.
 Incremental ARM deployment does not delete resources removed from a template.
 Any storage accounts created by a storage-backed version are no longer used;
 archive required records before an administrator deliberately removes them.
+Key Vault and Log Analytics workspaces from older versions are also no longer
+provisioned or needed by the app. Review and remove unused legacy resources
+separately to avoid retaining unnecessary resources and costs. Preserve required
+secrets/logs first; do not weaken a legacy vault's purge protection.
 Never change user/resource mappings while expecting old plans to remain valid;
 the configuration fingerprint intentionally blocks such runs.
 
@@ -108,7 +113,8 @@ the configuration fingerprint intentionally blocks such runs.
 5. Run `azd down`; the hook-created ACI group is in the deleted resource group.
 6. Remove dedicated pipeline federation/identity if no longer used. Azure removes
    the generated ACI DNS endpoint with the group; no custom CNAME is created.
-7. Key Vault purge protection prevents immediate purge/name reuse; wait the
-   configured recovery interval. Do not disable protection to simplify teardown.
+7. If deleting a legacy Key Vault from an older deployment, its purge protection
+   prevents immediate purge/name reuse; wait the configured recovery interval.
+   Current templates do not create a vault. Do not disable legacy protection.
 
 Azure infrastructure deletion does not delete tenant content already sent.

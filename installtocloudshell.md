@@ -21,6 +21,11 @@ Before starting:
 - Both images in [container-images.json](config/container-images.json) must be
   published and anonymously pullable.
 
+Provisioning creates the resource group and runtime managed identity; deployment
+adds the ACI container group. No Key Vault, Log Analytics workspace or storage
+account is provisioned. Read app and HTTPS logs with `az container logs` as shown
+below; no centralized log retention is configured.
+
 ## 1. Clone and open the project
 
 ```powershell
@@ -382,6 +387,10 @@ See [update instructions](README.md#updating-an-installed-environment).
 
 Export reports first: ACI updates can erase the temporary journal and
 duplicate-send protection. Review prior sends before running scenarios again.
+Older versions provisioned Key Vault and Log Analytics. Incremental provisioning
+does not remove those existing resources; review and remove unused legacy
+resources separately if minimizing ongoing cost. Preserve any required logs and
+secrets, and respect legacy Key Vault retention/purge protection.
 
 ```powershell
 azd deploy

@@ -186,12 +186,11 @@ runtime Graph and Exchange grants independently. `azd down` deletes Azure
 resources, **not the Entra app/enterprise principal**; delete those explicitly
 after checking they are dedicated. Never delete unrelated app credentials/grants.
 
-Key Vault is retained as an infrastructure resource for optional future secrets,
-but this authentication design does not read it or grant the runtime Secrets
-User. On an existing deployment, ARM incremental updates do not automatically
-remove a previously deployed vault role assignment: revoke the obsolete
-runtime Secrets User grant explicitly, and delete the old web secret once
-migration is verified.
+Key Vault is not provisioned or used by this authentication design. On an older
+deployment, ARM incremental updates do not automatically remove a previously
+deployed vault or role assignment: revoke any obsolete runtime Secrets User grant
+explicitly, and delete the old web secret once migration is verified. Review
+retention requirements before removing an unused legacy vault.
 
 ## Official reference
 

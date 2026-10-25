@@ -59,7 +59,9 @@ function global:az {
     if ($args[0] -eq "deployment") {
         Assert (@($state.grants | Where-Object appRoleId -eq $state.userReadRoleId).Count -eq 1) "Assign User.Read.All before any ACI initialization/deployment"
         $file = $args[[array]::IndexOf($args, "--parameters") + 1].Substring(1)
-        $state.deployments.Add((Get-Content -Raw $file | ConvertFrom-Json).parameters)
+        $parameters = (Get-Content -Raw $file | ConvertFrom-Json).parameters
+        Assert (-not $parameters.PSObject.Properties["logWorkspaceName"]) "ACI deployment must not require Log Analytics"
+        $state.deployments.Add($parameters)
         $state.containerExists = $true
         return
     }
@@ -196,7 +198,6 @@ try {
         AZURE_TENANT_ID = $state.tenant
         ACI_NAME = "aci-test"
         ACI_DNS_LABEL = "label-not-the-returned-host"
-        AZURE_LOG_WORKSPACE_NAME = "logs-test"
         ACME_EMAIL = "operator@example.org"
         OPERATOR_IDS = [guid]::NewGuid().ToString()
         USE_MANAGED_IDENTITY_FOR_IMAGE_PULL = ""

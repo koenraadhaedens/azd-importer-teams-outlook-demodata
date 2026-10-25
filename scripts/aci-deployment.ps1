@@ -80,7 +80,7 @@ function Get-ManagedIdentityImagePull {
 function Invoke-AciDeployment {
     param([switch]$Bootstrap)
     foreach ($name in @("AZURE_RESOURCE_GROUP", "AZURE_IDENTITY_RESOURCE_ID", "AZURE_IDENTITY_CLIENT_ID",
-        "ACI_NAME", "ACI_DNS_LABEL", "AZURE_LOG_WORKSPACE_NAME",
+        "ACI_NAME", "ACI_DNS_LABEL",
         "ACME_EMAIL", "OPERATOR_IDS", "AZURE_TENANT_ID")) {
         if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing azd environment value: $name" }
     }
@@ -108,7 +108,6 @@ function Invoke-AciDeployment {
         tenantId = @{ value = $env:AZURE_TENANT_ID }
         webClientId = @{ value = $(if ($Bootstrap) { "" } else { $env:WEB_CLIENT_ID }) }
         bootstrap = @{ value = [bool]$Bootstrap }
-        logWorkspaceName = @{ value = $env:AZURE_LOG_WORKSPACE_NAME }
         operatorIds = @{ value = $operatorIds }
         authorizedGroupId = @{ value = $(if ($env:AUTHORIZED_GROUP_ID) { $env:AUTHORIZED_GROUP_ID } else { "" }) }
         deliveryEnabled = @{ value = (-not $Bootstrap -and $env:DELIVERY_ENABLED -eq "true") }

@@ -35,7 +35,7 @@
 | HTTP 503 initialization response | Expected before final deployment: the app is dormant and Caddy has not requested a certificate. Complete registration/admin grants then run azd deploy. A bootstrap group is not application readiness. |
 | azd reports no native services | Intentional: ACI uses predeploy hook. Use current azd and PowerShell 7; hooks must not be skipped. |
 | Azure CLI login absent despite azd login | Run az login too, or azure/login OIDC in CI. Hooks deliberately use Azure CLI. |
-| Key Vault name cannot be reused after down | Purge protection/soft deletion is intentional; recover or wait, do not weaken protection. |
+| Old Key Vault or Log Analytics workspace remains after provisioning | Current templates no longer provision either resource or configure workspace diagnostics. Incremental ARM deployments do not delete resources removed from templates. Review and remove unused legacy resources separately after preserving required secrets/logs. Legacy Key Vault soft deletion/purge protection can prevent immediate name reuse; do not weaken protection. Current deployments do not need a vault name. |
 
 Never paste access tokens, authorization callback URLs, passwords, client secrets
 or raw journal content into an issue. Provide a redacted report/correlation ID.

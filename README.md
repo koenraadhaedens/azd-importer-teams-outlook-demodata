@@ -24,7 +24,7 @@ flowchart LR
     App --> Journal[Temporary ACI journal volume]
     App -->|Scoped app Mail.Send| Mail[Graph Outlook]
     App -->|Current user's delegated token| Teams[Graph Teams]
-    App --> Logs[Structured console / Log Analytics]
+    App --> Logs[Structured console / ACI container logs]
     ACR[Published container images] --> ACI
 ```
 
@@ -44,7 +44,7 @@ subject to certificate-authority rate limits. For enterprise ingress options see
 
 ## Prerequisites and tenant preparation
 
-- Azure subscription with ACI, Key Vault and managed-identity deployment rights,
+- Azure subscription with ACI and managed-identity deployment rights,
   plus network access to the configured container registry. Default images
   support anonymous pulls; registry ownership or pull-role grants are not required.
 - Azure CLI (`az`), Azure Developer CLI (`azd`), and **PowerShell 7**. The
@@ -281,8 +281,10 @@ azd provision
 ```
 
 The preprovision hook checks required settings and installs Bicep if missing.
-Provisioning creates the resource group, runtime managed identity, vault and
-Log Analytics, and exports their IDs. It does not create storage accounts.
+Provisioning creates the resource group and runtime managed identity, and
+exports their IDs. It does not create Key Vault, Log Analytics or storage
+accounts. Application and Caddy logs remain available through `az container logs`;
+there is no workspace ingestion cost or centralized log retention.
 The postprovision hook verifies the runtime identity and assigns Graph application
 `User.Read.All` before initializing ACI. Existing assignments are reused.
 Failure to authorize that grant stops provisioning; it is not deferred to an
@@ -452,8 +454,8 @@ Grant admin consent**. Azure CLI and azd authentication are separate; signing
 in with `azd auth login` alone does not fix this Azure CLI credential error.
 Consent does not replace the enterprise-app user/group assignments above.
 
-Allow permission propagation before starting the app. Key Vault is retained for
-optional future secrets; web authentication does not read it.
+Allow permission propagation before starting the app. Authentication uses the
+managed identity and federation; no Key Vault is provisioned or needed.
 
 #### 6. Deploy and open the application
 
@@ -585,8 +587,10 @@ The ACI group created by the deploy hook is in the azd resource group and is
 deleted with it. Back up the journal before teardown if replay evidence matters.
 The pre-existing registry and manually published images are not deleted. Remove
 the retired managed identity's registry-role assignment separately if necessary.
-Purge-protected Key Vault remains recoverable for seven days; names cannot be
-immediately reused. App registrations, consent, enterprise applications, Exchange
+If upgrading from an older version, previously created Key Vault and Log Analytics
+resources are not automatically removed by incremental provisioning. Remove
+unused legacy resources separately after reviewing retention requirements;
+legacy vault purge protection still applies. App registrations, consent, enterprise applications, Exchange
 service-principal registrations, management scopes and role assignments, federated
 pipeline identities are **tenant-level/external resources**, not
 removed by azd down. Remove them using [operations](docs/operations.md).

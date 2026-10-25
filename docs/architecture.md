@@ -93,8 +93,10 @@ or move the app to an appropriate managed web host. That is intentionally not
 the default small POC. Azure Front Door needs an explicit origin-lockdown design;
 do not expose a parallel unauthenticated/bypass HTTP path.
 
-Structured console audit events go to ACI/Log Analytics without message bodies.
+Structured console audit events are available through ACI container logs without
+message bodies. No Key Vault or Log Analytics workspace is provisioned, and ACI
+diagnostics are not connected to a workspace. There is no centralized log
+retention or workspace ingestion cost.
 Application Insights auto-instrumentation is intentionally not enabled because
 capturing OAuth URLs, tokens, request content and user data needs careful
-tenant-specific telemetry redaction. The Log Analytics workspace is provisioned
-and wired to ACI diagnostics.
+tenant-specific telemetry redaction.

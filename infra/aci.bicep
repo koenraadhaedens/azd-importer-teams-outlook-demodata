@@ -18,7 +18,6 @@ param authorizedGroupId string = ''
 param deliveryEnabled bool = false
 param mailboxScopeConfirmed bool = false
 param allowExternalRecipients bool = false
-param logWorkspaceName string
 
 var bootstrapCaddyConfig = '''
 :80 {
@@ -66,9 +65,6 @@ var applicationStartup = bootstrap
       }
     }
 
-resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
-  name: logWorkspaceName
-}
 resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
   name: containerGroupName
   location: location
@@ -79,13 +75,6 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
   properties: {
     osType: 'Linux'
     restartPolicy: 'Always'
-    diagnostics: {
-      logAnalytics: {
-        workspaceId: logs.properties.customerId
-        workspaceKey: logs.listKeys().primarySharedKey
-        logType: 'ContainerInsights'
-      }
-    }
     imageRegistryCredentials: useManagedIdentityForImagePull ? registryCredentials : []
     initContainers: [
       {

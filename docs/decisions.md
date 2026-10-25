@@ -21,8 +21,8 @@ The web app authenticates using a lazy MSAL client assertion obtained from the
 container's user-assigned identity for `api://AzureADTokenExchange/.default`.
 A federated identity credential on the web registration trusts that identity's
 principal ID in the same tenant. No web secret, local credential fallback or
-Key Vault read is used. Provision retains the vault for future secrets without
-granting the runtime access.
+Key Vault read is used. Provisioning omits Key Vault and Log Analytics to reduce
+resource count and cost; operational logs remain available through ACI.
 
 The azd noninteractive postprovision hook registers the app, URLs and federation
 using a **separate pre-authorized deployment identity**. It requests but does not

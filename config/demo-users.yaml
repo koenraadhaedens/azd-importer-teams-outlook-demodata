@@ -1,16 +1,16 @@
 users:
-  - key: adele
-    displayName: Adele Vance
-    userPrincipalName: adelev@contoso.onmicrosoft.com
+  - key: koenraad
+    displayName: Koenraad Haedens
+    userPrincipalName: koenraad@mtttraining.be
   - key: alex
     displayName: Alex Wilber
-    userPrincipalName: alexw@contoso.onmicrosoft.com
+    userPrincipalName: alexw@m365cpi55452589.onmicrosoft.com
   - key: christie
     displayName: Christie Cline
-    userPrincipalName: christiec@contoso.onmicrosoft.com
+    userPrincipalName: christiec@m365cpi55452589.onmicrosoft.com
   - key: diego
     displayName: Diego Siciliani
-    userPrincipalName: diegos@contoso.onmicrosoft.com
+    userPrincipalName: diegos@m365cpi55452589.onmicrosoft.com
   - key: megan
     displayName: Megan Bowen
-    userPrincipalName: meganb@contoso.onmicrosoft.com
+    userPrincipalName: meganb@m365cpi55452589.onmicrosoft.com

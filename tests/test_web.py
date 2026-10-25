@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,7 +14,9 @@ from demo_loader.security import redact
 
 
 def test_auth_and_security_headers(client: TestClient) -> None:
-    assert client.get("/").status_code == 200
+    page = client.get("/")
+    assert page.status_code == 200
+    assert page.headers["referrer-policy"] == "same-origin"
     assert client.get("/runs/not-real/report").status_code == 401
     response = client.post("/upload")
     assert response.status_code == 401
@@ -102,14 +105,56 @@ def test_upload_boundary(
     assert response.status_code == expected
 
 
-def test_csrf_origin(client: TestClient, settings: Settings) -> None:
+@pytest.mark.parametrize("origin", ["https://evil.example", "null"])
+def test_csrf_origin(client: TestClient, settings: Settings, origin: str) -> None:
     csrf = sign_in(client, str(settings.operator_ids[0]), str(settings.tenant_id))
     assert (
         client.post(
-            "/logout", data={"csrf": csrf}, headers={"Origin": "https://evil.example"}
+            "/logout", data={"csrf": csrf}, headers={"Origin": origin}
         ).status_code
         == 403
     )
+
+
+def test_upload_same_origin(client: TestClient, settings: Settings) -> None:
+    csrf = sign_in(client, str(settings.operator_ids[0]), str(settings.tenant_id))
+    users = [user.key for user in client.app.state.users.users]
+    content = json.dumps(
+        {
+            "schemaVersion": "1.0",
+            "scenarioId": "same-origin-upload",
+            "title": "Same-origin upload",
+            "author": "Test operator",
+            "createdAt": "2026-10-01T09:00:00Z",
+            "tenantAssumptions": ["Isolated demo tenant"],
+            "requiredUsers": users,
+            "activities": [
+                {
+                    "id": "email",
+                    "type": "email",
+                    "user": users[0],
+                    "to": [users[1]],
+                    "subject": "Fictional demo",
+                    "body": "Fictional demo",
+                }
+            ],
+        }
+    ).encode()
+    response = client.post(
+        "/upload",
+        data={"csrf": csrf},
+        files={
+            "scenario": (
+                "demo.yaml",
+                content,
+                "text/yaml",
+            )
+        },
+        headers={"Origin": settings.public_url},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["referrer-policy"] == "same-origin"
 
 
 def test_secret_redaction() -> None:

@@ -18,6 +18,7 @@
 | Run blocked after config change | Restore reviewed mappings or create a separately reviewed new scenario; existing configuration fingerprint is immutable. |
 | Unknown step | Request/process may have ended after Graph accepted it. Inspect mailbox/channel manually. Do not retry blindly. |
 | File rejected by MIME | Save as UTF-8 .yaml/.yml and send one of the documented YAML/text MIME types; octet-stream is not accepted. |
+| Upload returns Invalid request origin | This happens before YAML validation. Older images send Referrer-Policy: no-referrer, which makes browser form submissions send Origin: null. Rebuild/push and deploy the fixed app image, which uses same-origin, then reload the form before retrying. Also ensure the browser origin matches PUBLIC_URL exactly (including https:// and any port). Do not disable CSRF/origin checks or allow the null origin. |
 | 413 / 429 | Reduce file size or wait for the one-minute request window; do not remove bounds to bypass abuse protection. |
 | Session lost / group overage | Restart loses memory sessions; sign in again. Use explicit allowed object IDs or a small directly emitted group. |
 | Federation/token exchange fails | Verify the web app's aci-managed-identity credential: same tenant, issuer ending /v2.0, subject equal to the identity principal ID (not client ID), audience api://AzureADTokenExchange. Allow propagation. No web secret or vault access is required. |

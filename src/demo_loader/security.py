@@ -46,7 +46,7 @@ class SecurityMiddleware:
             if message["type"] == "http.response.start":
                 extra = [
                     (b"x-content-type-options", b"nosniff"),
-                    (b"referrer-policy", b"no-referrer"),
+                    (b"referrer-policy", b"same-origin"),
                     (b"x-frame-options", b"DENY"),
                     (b"cache-control", b"no-store"),
                     (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),

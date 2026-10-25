@@ -30,8 +30,8 @@ jobs:
       - run: pip-audit -r requirements.lock
       - run: python scripts/check-repository.py
       - run: az bicep install
-      - run: az bicep build --file infra/main.bicep --stdout > /dev/null
-      - run: az bicep build --file infra/aci.bicep --stdout > /dev/null
+      - shell: pwsh
+        run: ./tests/infrastructure.tests.ps1
       - shell: pwsh
         run: ./scripts/check-powershell.ps1
       - shell: pwsh

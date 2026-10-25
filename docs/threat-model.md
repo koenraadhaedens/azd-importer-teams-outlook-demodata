@@ -3,7 +3,7 @@
 Assets: demo mailbox/channel integrity, tenant identities, delegated and
 application tokens, managed-identity federation trust, TLS private keys, scenario bodies and replay
 records. Trust boundaries: browser -> Caddy -> FastAPI, Entra -> session,
-uploaded YAML -> typed plan, app -> Graph, app -> durable Blob, sidecar -> TLS
+uploaded YAML -> typed plan, app -> Graph, app -> temporary journal, sidecar -> TLS
 storage, CI/deployer -> Azure control plane.
 
 | Threat | Control | Residual risk / verification |
@@ -14,12 +14,12 @@ storage, CI/deployer -> Azure control plane.
 | Token theft / cross-tenant login | Tenant-specific MSAL code flow, state/nonce, exact tenant/object checks, allowlists/direct group claims, memory-only tokens, opaque Secure HttpOnly SameSite cookie, CSP and CSRF | Browser compromise and memory compromise remain; shared ACI identity trust with Caddy |
 | Group overage bypass | Fail closed; no group-lookup fallback | Large-group users need explicit operator ID or a small direct group |
 | Secret leakage in logs/reports | No access logging, no raw Graph body/error logging, fixed error text, content-free report allowlist, redaction filter, library log levels | Unhandled third-party diagnostics must be reviewed before enabling verbose logs |
-| Replay/duplicates, process crash | Scenario ID/fingerprint/tombstones, per-step keys, durable running-before-send journal, ETag writes, restart running -> unknown, no retry of ambiguous POST | Graph sendMail does not guarantee idempotency; exactly-once impossible; administrators can deliberately change IDs |
+| Replay/duplicates, process crash | Scenario ID/fingerprint/tombstones, per-step keys, atomic running-before-send journal, restart running -> unknown while the journal survives, no retry of ambiguous POST | ACI lifecycle changes can erase the temporary journal and all replay records. Review prior sends after loss. Graph sendMail does not guarantee idempotency; exactly-once impossible |
 | CSRF, XSS, hostile origin/Host | CSRF token and origin checks, escaped Jinja output, literal placeholders, formatting-only email HTML sanitizer, strict headers and fixed public origin | Front-channel logout intentionally clears only local auth; cannot send mail |
 | Exposing ACI directly | Only Caddy 80/443 public; application 8000 not published; Azure-assigned FQDN with Caddy ACME and verified HTTPS readiness; initialization serves only 503 with dormant app | Public ACI is not WAF/private ingress; use Application Gateway/private ACI for higher assurance |
 | Compromised image / supply chain | Multi-stage nonroot app, hash-locked Python runtime, CI lint/tests/Bandit/pip-audit, private registry pull identity, centralized image references, explicit Caddy version, least-privilege deployment | Images are published manually; tagless app defaults to mutable latest. Prefer reviewed immutable digests. Base/Caddy OS packages need separate advisory review; all group containers share identity boundary |
-| Persistent uploaded content | Private Entra Blob, encryption at rest, explicit retirement, no raw-journal web download, protected local disk | Journal backups contain bodies; operator must manage retention and keep fictional data |
-| TLS private-key exposure | Separate private certificate-only Azure Files share; runtime app does not mount it; key obtained server-side by ARM | ACI Azure Files uses an account key; Azure control-plane admins can access it |
+| Uploaded content | Separate temporary journal volume, nonroot UID/GID 10001 and directory mode 700, explicit retirement, no raw-journal web download | Journal backups contain bodies; operator must manage retention and keep fictional data. Temporary volume loss also removes replay evidence |
+| TLS private-key exposure | Separate temporary Caddy volume; runtime app does not mount it; no Azure storage account key | Control-plane administrators can access container data. State loss forces certificate reissuance and can hit CA rate limits |
 | Graph throttling / denial of service | 429 Retry-After budget, bounded backoff, call timeouts, semaphore, proxy-client request limiting, bounded sessions/uploads/batches | Global proxy-client limiter can affect several users; not a distributed internet DDoS defense |
 | Accidental production tenant use | Explicit DEMO_TENANT_CONFIRMED, exact tenant authority, five-user startup resolution, delivery disabled by default, visible preview | No API can reliably prove "CDX"; administrator confirmation and tenant governance remain required |
 | Configuration drift | Fingerprint binds planned users/resources/tenant/recipient policy to run | Changed plans require explicit review/new scenario; do not mutate stored journals |
@@ -31,7 +31,9 @@ storage, CI/deployer -> Azure control plane.
   start mail or execute another user's Teams actions.
 - Public port 8000 is unreachable; Caddy's public certificate verifies and HTTP
   redirects. Local CA is trusted explicitly, never by disabling TLS validation.
-- Persist/restart during a test write produces unknown, not a replay.
+- A process crash with surviving journal marks interrupted writes unknown.
+  After temporary-volume loss, manually review prior sends before any execution;
+  duplicate protection cannot recognize forgotten runs.
 - Reports/logs exclude bodies and credentials; retirement removes stored bodies.
 - CI identity federation is environment-protected and not triggered from forks.
 

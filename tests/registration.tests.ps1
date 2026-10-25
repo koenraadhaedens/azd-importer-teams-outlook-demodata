@@ -168,11 +168,9 @@ try {
         AZURE_IDENTITY_PRINCIPAL_ID = $state.principal
         AZURE_IDENTITY_CLIENT_ID = [guid]::NewGuid().ToString()
         AZURE_TENANT_ID = $state.tenant
-        JOURNAL_BLOB_URL = "https://example.blob.core.windows.net/journal/runs.json"
         ACI_NAME = "aci-test"
         ACI_DNS_LABEL = "label-not-the-returned-host"
         AZURE_LOG_WORKSPACE_NAME = "logs-test"
-        AZURE_CERT_STORAGE_NAME = "certtest"
         ACME_EMAIL = "operator@example.org"
         OPERATOR_IDS = '["' + [guid]::NewGuid().ToString() + '"]'
         DEMO_TENANT_CONFIRMED = "true"
@@ -206,6 +204,8 @@ try {
     $bootstrap = $state.deployments[0]
     Assert $bootstrap.bootstrap.value "First deployment must use initialization mode"
     Assert (-not $bootstrap.deliveryEnabled.value) "Bootstrap must disable real delivery"
+    Assert (-not $bootstrap.PSObject.Properties["journalBlobUrl"] -and
+        -not $bootstrap.PSObject.Properties["certificateStorageName"]) "Deployment must not depend on external storage"
     Assert ($bootstrap.webClientId.value -eq "" -and $bootstrap.publicHostname.value -eq "") "Bootstrap must not use guessed IDs/hostname"
     Assert ($state.saved.PUBLIC_HOSTNAME -eq $state.fqdn) "Use the actual Azure FQDN, not the label or previous custom hostname"
     Assert ($state.saved.PUBLIC_URL -eq "https://$($state.fqdn)") "Discovered URL was not saved"

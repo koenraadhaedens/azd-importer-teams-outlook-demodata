@@ -64,18 +64,23 @@ digests; the requested tagless app default uses Docker's implicit `latest`.
 For enterprise deployments prefer Application Gateway/private ACI or another
 managed ingress platform; the POC intentionally avoids their cost.
 
-## 5. Durable journal, not distributed background scheduling
+## 5. Temporary demo state, not distributed background scheduling
 
-Local mode uses atomic JSON replacement and fsync. Azure mode uses an
-Entra-authenticated private Blob with ETag compare-and-swap on every state
-transition. Conflicting writers or persistence errors poison the journal and
-stop further operations. One process/replica is required. No SQLite on SMB.
-The journal necessarily contains pending message content; reports and logs do
-not. Encryption at rest is supplied by Azure Storage; local disk must be protected.
-Retiring a run removes bodies but retains its fingerprint/tombstone.
+The default ACI demo uses separate `emptyDir` volumes for Caddy certificates and
+the local execution journal, matching the simpler Odoo demo pattern. No Azure
+storage accounts or private-network infrastructure are provisioned. The local
+journal uses atomic JSON replacement and fsync; persistence errors poison it
+and stop execution. One nonroot application process/replica is required.
+The optional Blob backend is retained in code for custom deployments, not used
+by default. The journal contains pending message content; reports and logs do
+not. Retiring a run removes bodies but retains its fingerprint/tombstone.
 
 An action is durably marked running before its HTTP request. On restart it becomes
-unknown, never automatically retried. A Graph 202 means accepted, not delivered.
+unknown, never automatically retried, **if the journal survives**. ACI lifecycle
+changes can erase temporary volumes, certificates and all replay records. The
+operator explicitly accepted this demo-only tradeoff. Export reports before
+changes and inspect remote outcomes before executing scenarios after state loss.
+A Graph 202 means accepted, not delivered.
 Retries are restricted to explicit HTTP 429 rejections; POST timeouts/5xx are
 ambiguous and are not retried. Read-only user-resolution calls can retry 5xx.
 Exactly-once delivery cannot be promised because Graph sendMail has no supported

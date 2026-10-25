@@ -24,15 +24,19 @@ host/client ID in azd. Final deployment enables the app and Caddy ACME for that
 FQDN; public resolution and reachable 80/443 are required. No custom DNS is
 needed. Existing groups are not reset to initialization mode on reruns. Hostname
 drift blocks final deployment until provisioning reconciles Entra.
-Caddy automatically renews certificates; Azure Files stores TLS state
-across ACI replacement and avoids repeated issuance/rate-limit problems.
+Caddy automatically renews certificates using a temporary `emptyDir` at `/data`.
+The app has a separate `emptyDir` at `/app/data` for its local JSON journal;
+Caddy does not mount it. An initializer reuses the configured Alpine Caddy image
+to set that directory's ownership to the app's nonroot UID/GID 10001 and mode 700.
+No extra image, storage account, account key or Blob permission is required.
 
-The certificate-only storage account uses an account key because ACI's Azure
-Files volume contract requires one. Bicep obtains it server-side using listKeys;
-it is never committed, exported, passed to the app, or supplied by the operator.
-The journal account instead disables shared-key Blob authentication and uses
-managed identity. TLS keys should be treated as credentials when backing up or
-deleting the certificate share.
+This intentionally follows the simple
+[Odoo ACI demo](https://github.com/koenraadhaedens/azd-erp-crm-odoo-mcp-demo) pattern.
+Temporary state is not durable across ACI lifecycle changes: stopping, restarting,
+updating or recreating the group can lose certificates and execution history.
+Caddy requests certificates again after loss, subject to CA rate limits. Lost
+journal tombstones cannot prevent duplicate sends. Export reports and review
+remote outcomes before running scenarios after storage loss.
 
 ## Container image configuration
 
@@ -60,12 +64,13 @@ the registration/URLs/trust in the azd postprovision hook; administrator consent
 and enterprise assignments remain separate. Operator upload stores a normalized scenario
 and SHA-256 fingerprint. Each step has its own idempotency key.
 
-Before Graph writes, the journal persists running state. Local storage uses
-fsync plus atomic replace; Azure Blob uses ETag conditional replacement.
-Conflicting writes/storage errors stop the process from accepting further
-execution. On restart running becomes unknown. This prevents automatic retries
-after a crash with uncertain remote outcome. It does not prove delivery or
-remote exactly-once semantics.
+Before Graph writes, the journal persists running state using fsync plus atomic
+JSON replacement on the temporary app volume. Storage errors stop execution.
+While that journal remains available, interrupted running steps become unknown
+instead of being automatically retried. This protection does not survive volume
+loss and does not prove delivery or remote exactly-once semantics. The code's
+optional Blob backend remains available for custom deployments, but default ACI
+explicitly sets JOURNAL_BLOB_URL empty and does not provision Azure Storage.
 
 Tokens are not in the journal. MSAL session caches and delegated tokens are
 memory-only. Blob content includes pending bodies; reports and audit records

@@ -12,14 +12,12 @@ param identityClientId string
 param webClientId string = ''
 param bootstrap bool = false
 param tenantId string = tenant().tenantId
-param journalBlobUrl string
 param operatorIds string
 param authorizedGroupId string = ''
 param deliveryEnabled bool = false
 param mailboxScopeConfirmed bool = false
 param allowExternalRecipients bool = false
 param logWorkspaceName string
-param certificateStorageName string
 
 var bootstrapCaddyConfig = '''
 :80 {
@@ -64,9 +62,6 @@ var applicationStartup = bootstrap
 resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
   name: logWorkspaceName
 }
-resource certificates 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
-  name: certificateStorageName
-}
 resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
   name: containerGroupName
   location: location
@@ -88,6 +83,18 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
       for server in registryServers: {
         server: server
         identity: identityResourceId
+      }
+    ]
+    initContainers: [
+      {
+        name: 'journal-permissions'
+        properties: {
+          image: caddyImage
+          command: ['/bin/sh', '-ec', 'chown 10001:10001 /journal; chmod 700 /journal']
+          volumeMounts: [
+            { name: 'journal-data', mountPath: '/journal' }
+          ]
+        }
       }
     ]
     ipAddress: {
@@ -116,7 +123,11 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
               { name: 'MAILBOX_SCOPE_CONFIRMED', value: string(mailboxScopeConfirmed) }
               { name: 'ALLOW_EXTERNAL_RECIPIENTS', value: string(allowExternalRecipients) }
               { name: 'MANAGED_IDENTITY_CLIENT_ID', value: identityClientId }
-              { name: 'JOURNAL_BLOB_URL', value: journalBlobUrl }
+              { name: 'JOURNAL_BLOB_URL', value: '' }
+              { name: 'DATA_DIR', value: '/app/data' }
+            ]
+            volumeMounts: [
+              { name: 'journal-data', mountPath: '/app/data' }
             ]
           },
           applicationStartup
@@ -148,12 +159,11 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
       { name: 'caddy-config', secret: { Caddyfile: base64(caddyConfig) } }
       {
         name: 'caddy-data'
-        azureFile: {
-          shareName: 'caddy'
-          storageAccountName: certificates.name
-          storageAccountKey: certificates.listKeys().keys[0].value
-          readOnly: false
-        }
+        emptyDir: {}
+      }
+      {
+        name: 'journal-data'
+        emptyDir: {}
       }
     ]
   }

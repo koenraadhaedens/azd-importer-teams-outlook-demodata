@@ -32,8 +32,8 @@ function Get-AciHostname {
 function Invoke-AciDeployment {
     param([switch]$Bootstrap)
     foreach ($name in @("AZURE_RESOURCE_GROUP", "AZURE_IDENTITY_RESOURCE_ID", "AZURE_IDENTITY_CLIENT_ID",
-        "JOURNAL_BLOB_URL", "ACI_NAME", "ACI_DNS_LABEL", "AZURE_LOG_WORKSPACE_NAME",
-        "AZURE_CERT_STORAGE_NAME", "ACME_EMAIL", "OPERATOR_IDS", "AZURE_TENANT_ID")) {
+        "ACI_NAME", "ACI_DNS_LABEL", "AZURE_LOG_WORKSPACE_NAME",
+        "ACME_EMAIL", "OPERATOR_IDS", "AZURE_TENANT_ID")) {
         if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing azd environment value: $name" }
     }
     if ($env:ACI_NAME -notmatch '^[a-z0-9][a-z0-9-]{0,62}$') { throw "Invalid ACI_NAME." }
@@ -59,9 +59,7 @@ function Invoke-AciDeployment {
         tenantId = @{ value = $env:AZURE_TENANT_ID }
         webClientId = @{ value = $(if ($Bootstrap) { "" } else { $env:WEB_CLIENT_ID }) }
         bootstrap = @{ value = [bool]$Bootstrap }
-        journalBlobUrl = @{ value = $env:JOURNAL_BLOB_URL }
         logWorkspaceName = @{ value = $env:AZURE_LOG_WORKSPACE_NAME }
-        certificateStorageName = @{ value = $env:AZURE_CERT_STORAGE_NAME }
         operatorIds = @{ value = $env:OPERATOR_IDS }
         authorizedGroupId = @{ value = $(if ($env:AUTHORIZED_GROUP_ID) { $env:AUTHORIZED_GROUP_ID } else { "" }) }
         deliveryEnabled = @{ value = (-not $Bootstrap -and $env:DELIVERY_ENABLED -eq "true") }
@@ -70,6 +68,7 @@ function Invoke-AciDeployment {
     }
     $file = Join-Path ([IO.Path]::GetTempPath()) ("aci-" + [guid]::NewGuid() + ".json")
     try {
+        Write-Warning "Demo-only temporary storage: ACI stop/restart/update/recreation can discard certificates and execution history. Review prior sends before running scenarios after storage loss."
         @{
             '$schema' = "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"
             contentVersion = "1.0.0.0"

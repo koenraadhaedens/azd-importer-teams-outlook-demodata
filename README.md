@@ -19,9 +19,9 @@ flowchart LR
     subgraph ACI[One ACI container group]
       Caddy -->|loopback 8000, not public| App[FastAPI / Jinja / engine]
     end
-    Caddy --> Certs[Private Azure Files TLS state]
+    Caddy --> Certs[Temporary ACI TLS volume]
     App -->|Managed-identity federated assertion| Entra
-    App -->|ETag journal| Blob[Private Azure Blob]
+    App --> Journal[Temporary ACI journal volume]
     App -->|Scoped app Mail.Send| Mail[Graph Outlook]
     App -->|Current user's delegated token| Teams[Graph Teams]
     App --> Logs[Structured console / Log Analytics]
@@ -33,13 +33,18 @@ obtains and renews ACME certificates, and forwards to the app. ACI does not
 expose port 8000. Deployment retrieves Azure's assigned `azurecontainer.io`
 hostname automatically and uses it for Caddy and Entra; no custom domain,
 manual PUBLIC_HOSTNAME or CNAME is needed. Port 80 is needed for ACME/HTTPS redirects.
-Certificate keys persist in a dedicated private Azure Files share; application
-state uses a separate Entra-authenticated Blob account. For enterprise ingress
-and WAF/private networking options see [architecture](docs/architecture.md).
+Caddy certificates and the local execution journal use temporary ACI `emptyDir`
+volumes, like the [Odoo demo deployment](https://github.com/koenraadhaedens/azd-erp-crm-odoo-mcp-demo).
+No Azure storage accounts, file shares, private endpoints or ingress gateway are
+needed. **Demo-only:** ACI stop/restart/update/recreation can erase certificates,
+run history and duplicate-send protection. Review prior sends after storage loss;
+do not assume rerunning a scenario is safe. Caddy can request new certificates,
+subject to certificate-authority rate limits. For enterprise ingress options see
+[architecture](docs/architecture.md).
 
 ## Prerequisites and tenant preparation
 
-- Azure subscription with ACI, storage, Key Vault and role-assignment rights,
+- Azure subscription with ACI, Key Vault and managed-identity deployment rights,
   plus access to the existing private container registry.
 - Azure CLI (`az`), Azure Developer CLI (`azd`), and **PowerShell 7**. The
   preprovision hook checks Bicep and runs `az bicep install` if it is unavailable;
@@ -120,6 +125,8 @@ ACI, Compose and the smoke-test script read this same file. The application
 reference without a tag means `:latest`. You may specify an explicit tag or
 `@sha256:...` digest for either image; immutable digests are recommended for
 repeatable releases. Use fully qualified private registry references.
+The Caddy image also supplies `/bin/sh`, `chown` and `chmod` as root for the
+one-time journal-volume permissions initializer; the application stays nonroot.
 
 **Images are built/pushed manually.** Deployment does not create an ACR or
 build, push, retag or resolve an image. Configure actual non-secret user/resource
@@ -240,8 +247,8 @@ azd provision
 ```
 
 The preprovision hook checks required settings and installs Bicep if missing.
-Provisioning creates the resource group, runtime managed identity, vault, journal
-storage, certificate share and Log Analytics, and exports their IDs.
+Provisioning creates the resource group, runtime managed identity, vault and
+Log Analytics, and exports their IDs. It does not create storage accounts.
 
 The new managed identity needs registry pull access before ACI can start. The
 postprovision hook may stop at image pull until a registry administrator grants
@@ -319,7 +326,9 @@ declaration is not a reliable image-refresh mechanism.
 If Azure changes the ACI FQDN, run `azd provision` to reconcile the generated
 hostname and Entra URLs before deployment.
 Changing a running ACI group may briefly interrupt service; journal recovery
-marks interrupted writes unknown rather than replaying them.
+marks interrupted writes unknown only if the journal survives. If temporary
+storage is lost, run history/tombstones are gone: export reports before changes
+and manually review prior sends before executing any scenario again.
 
 ### OIDC GitHub Actions
 
@@ -374,6 +383,7 @@ pip-audit -r requirements.lock
 az bicep build --file infra\main.bicep --stdout
 az bicep build --file infra\aci.bicep --stdout
 pwsh .\scripts\check-powershell.ps1
+pwsh .\tests\infrastructure.tests.ps1
 docker build -t azd-m365-demo-loader:check .
 pwsh .\scripts\smoke-container.ps1 -Image azd-m365-demo-loader:check -CaddyImage caddy:2.11.4-alpine
 ```
@@ -400,14 +410,14 @@ removed by azd down. Remove them using [operations](docs/operations.md).
 
 ## Security warnings and known limitations
 
-- Single process/replica only; compare-and-swap detects competing writers, not
-  high-availability orchestration. No multi-region failover or distributed scheduler.
+- Single process/replica only; the local journal has no cross-process locking.
+  No multi-region failover or distributed scheduler.
 - No exactly-once remote guarantee; mail HTTP 202 means accepted, not delivered.
   Ambiguous writes are never automatically retried.
-- Pending bodies are stored in the journal (encrypted by Azure Storage at rest).
-  Access is restricted to authorized demo participants/operators; retire content.
-  Local journals require protected disk storage. There is no automatic retention
-  deletion that could silently erase replay protection.
+- Pending bodies are stored in the app's temporary journal volume. Keep only
+  fictional data and retire content. ACI lifecycle changes can erase the journal,
+  including tombstones and duplicate-send protection; export reports and review
+  prior sends before running scenarios after storage loss.
 - Sessions/delegated tokens live only in server memory, expire within an hour,
   are not refreshed offline, and are lost on restart.
 - Explicit group claims only; group overage fails closed. No group-wide Graph

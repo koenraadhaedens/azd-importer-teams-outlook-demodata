@@ -19,7 +19,12 @@
     </form>
     {% endif %}
   </header>
-  <main id="main">{% block content %}{% endblock %}</main>
+  <main id="main">
+    <p class="notice" role="note"><strong>Temporary demo storage.</strong> ACI lifecycle changes can erase
+      execution history and duplicate-send protection. Export reports and review prior sends before
+      running scenarios after storage loss.</p>
+    {% block content %}{% endblock %}
+  </main>
   <footer>Isolated CDX demo tenants only. No password collection or silent Teams impersonation.</footer>
 </body>
 </html>

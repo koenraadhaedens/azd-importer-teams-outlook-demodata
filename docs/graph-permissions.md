@@ -86,4 +86,4 @@ runtime Graph permissions remain on the managed identity itself.
 - [Reply](https://learn.microsoft.com/en-us/graph/api/chatmessage-post-replies?view=graph-rest-1.0)
 - [Permission reference](https://learn.microsoft.com/en-us/graph/permissions-reference)
 - [Exchange Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
-- [ACI Azure Files volumes](https://learn.microsoft.com/en-us/azure/container-instances/container-instances-volume-azure-files)
+- [ACI temporary emptyDir volumes](https://learn.microsoft.com/en-us/azure/container-instances/container-instances-volume-emptydir)

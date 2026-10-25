@@ -2,6 +2,8 @@
 
 Local checks performed on 2026-10-25. No live Azure deployment, Entra sign-in,
 Exchange scope assignment or Microsoft 365 message delivery is claimed.
+Earlier sections record checks for earlier configurations; see the temporary
+demo-storage follow-up below for the current deployment.
 
 | Check | Actual result |
 |---|---|
@@ -43,8 +45,8 @@ TestClient. Tests pass on both runtimes; runtime Graph HTTP is unaffected.
 - Live single-tenant OIDC sign-in/consent, group claim policy and conditional access.
 - Graph application-role grants and five-in-scope/sixth-out-of-scope Exchange tests.
 - Real email acceptance/delivery and each user's Teams channel membership.
-- Public DNS/ACME issuance/renewal, Azure Files mount and ACI image-pull/RBAC propagation.
-- ACI restart/Blob ETag recovery against a real storage account (local recovery is tested).
+- Public DNS/ACME issuance/renewal and ACI image-pull/RBAC propagation.
+- Temporary-volume behavior during live ACI lifecycle operations (local recovery is tested).
 - Container OS/Caddy vulnerability advisory scan and live penetration testing.
 - GitHub OIDC pipeline execution in an administrator-configured environment.
 
@@ -143,3 +145,36 @@ performed. Live issuance still requires working public DNS, reachable ports,
 certificate-authority acceptance/rate-limit availability and writable persistent
 certificate storage. Missing registry pull permissions can stop the initial hook:
 grant them to the provisioned identity and rerun provision.
+
+## Temporary demo-storage follow-up
+
+The default ACI deployment now follows the referenced Odoo demo's `emptyDir`
+pattern. It creates no Azure Storage accounts, shares, Blob containers or Blob
+role assignments. Caddy and the app journal have separate temporary volumes.
+The app explicitly disables its optional Blob backend. The configured Alpine
+Caddy image initializes the journal directory as UID/GID 10001, mode 700, before
+the nonroot app starts. Deployment logs and the UI warn about state loss.
+
+Actual local checks:
+
+- Both Bicep entrypoints compiled; compiled-template assertions verified no
+  storage resources, no Azure Files mounts/storage parameters, isolated
+  temporary volumes, initialization permissions, and only public ports 80/443.
+- Linux PowerShell mocked registration/deployment and all nine prerequisite
+  scenarios passed. All deployment scripts parsed.
+- The updated production image built and passed the Caddy 2.11.4 TLS-chain/
+  hostname, HSTS, health, HTML/CSS and HTTP redirect smoke checks.
+- The smoke used the same journal permissions initializer and confirmed the
+  nonroot application wrote its local journal onto the initialized volume.
+- Repository contracts and whitespace checks passed.
+- Python regression suite: **43 passed, 5 failed**. The same five failures were
+  reproduced on unchanged HEAD in an isolated baseline worktree. They are
+  existing fixture expectations for the configured image tag and user mappings,
+  not regressions from temporary-storage changes. Configuration was not reverted
+  or rewritten to make these checks pass; the baseline worktree was removed.
+
+No live deployment, public ACME issuance or actual ACI volume-lifecycle behavior
+was verified. Temporary state is not durable: stop/restart/update/recreation can
+erase execution history and duplicate-send protection. Export reports and review
+prior sends before executing scenarios after storage loss. Caddy may need to
+obtain certificates again, subject to CA limits.

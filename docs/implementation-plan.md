@@ -15,12 +15,14 @@ name is retained; no remote or history is rewritten.
    FQDN and registers matching URLs/app/trust. Final deployment enables the app
    and Caddy ACME; no up-front hostname/custom DNS. Consent and assignments
    remain administrator-controlled.
-4. Implement Graph adapters and a durable execution journal: assisted Teams,
+4. Implement Graph adapters and an atomic execution journal: assisted Teams,
    app-only mail, cancellation, dependencies, bounded timing, safe retries,
    duplicate protection, dry-run and redacted reports.
 5. Build the accessible server-rendered UI and tests of trust boundaries.
 6. Add a multi-stage container, ACI deployment with a Caddy TLS sidecar, Key Vault,
-   managed identity, Blob journal storage, azd hooks and OIDC CI. Per the updated
+   managed identity, temporary ACI certificate/journal volumes, azd hooks and OIDC CI.
+   State and replay protection can be lost on ACI lifecycle changes; this is an
+   explicitly accepted demo-only tradeoff. Per the updated
    image-publishing requirement, use manually published images in an existing
    registry configured through config/container-images.json; do not create a
    new registry or build/push during deployment.

@@ -36,11 +36,10 @@ callback query logging and HTTP-library debug logs are disabled.
 
 ## Storage and retention
 
-Azure uses a private Blob (`journal/runs.json`) with Entra auth and conditional
-ETag replacement. Run exactly one process/replica. A competing writer or storage
-failure poisons the journal and makes health/execution fail; investigate, stop
-the competing instance, then restart. Never ignore or reset the journal to
-work around duplicate detection.
+The default Azure demo uses an atomic JSON journal on a temporary ACI `emptyDir`
+at `/app/data`. Run exactly one process/replica; local storage has no cross-process
+locking. A storage failure poisons the journal and makes health/execution fail.
+Never reset a surviving journal to work around duplicate detection.
 
 Back up under restricted administrator access. Journal snapshots contain pending
 message bodies and user context; keep only fictional data. No web endpoint serves
@@ -53,10 +52,15 @@ Local mode uses an atomic JSON file under DATA_DIR; use protected disk permissio
 and persistent Docker volume. Never mount the same local journal into multiple
 processes. Local atomic replacement does not provide cross-process locking.
 
-Caddy's certificate share contains private keys and ACME state. Protect backups,
-avoid deleting it during updates, and rotate the storage account mount key
-through an ACI update if exposed. Blob journal and certificate accounts are
-deliberately separate.
+Caddy's separate temporary `/data` volume holds private keys and ACME state.
+There is no Azure Files share or storage account mount key. Stop/restart/update/
+recreation of ACI can erase both temporary volumes. Export reports before
+lifecycle changes. After journal loss, review prior mailbox/channel outcomes
+manually before running any scenario: duplicate protection no longer knows
+previous runs. Caddy requests new certificates after loss and can hit CA limits.
+
+The optional Entra Blob backend remains available in application code for custom
+deployments, but the default ACI template disables it and provisions no storage.
 
 ## Observability and readiness
 
@@ -82,6 +86,9 @@ reference: ACI may not refresh an image when the declaration has not changed.
 Verify the runtime managed identity has pull permission on each configured
 registry (AcrPull for standard RBAC, repository reader for ABAC registries).
 The existing registry is not managed or deleted by this repository's Bicep.
+Incremental ARM deployment does not delete resources removed from a template.
+Any storage accounts created by a storage-backed version are no longer used;
+archive required records before an administrator deliberately removes them.
 Never change user/resource mappings while expecting old plans to remain valid;
 the configuration fingerprint intentionally blocks such runs.
 

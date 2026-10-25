@@ -10,8 +10,15 @@ $smokeScript = Join-Path (Join-Path (Get-Location).Path "tests") "smoke_server.p
 $smokeClient = Join-Path (Join-Path (Get-Location).Path "tests") "smoke_client.py"
 $caddyConfig = Join-Path (Get-Location).Path "Caddyfile"
 $certificate = Join-Path ([IO.Path]::GetTempPath()) ("demo-loader-ca-" + [guid]::NewGuid() + ".crt")
+$journalVolume = "demo-loader-journal-" + [guid]::NewGuid()
 try {
+    docker volume create $journalVolume | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not create the temporary journal volume" }
+    docker run --rm --mount "type=volume,source=$journalVolume,target=/journal" `
+        $CaddyImage /bin/sh -ec 'chown 10001:10001 /journal; chmod 700 /journal'
+    if ($LASTEXITCODE -ne 0) { throw "Could not initialize nonroot journal permissions" }
     $appId = (docker run -d --rm -p 127.0.0.1:8443:443 -p 127.0.0.1:8080:80 `
+        --mount "type=volume,source=$journalVolume,target=/tmp/demo-loader-smoke" `
         --mount "type=bind,source=$smokeScript,target=/checks/smoke_server.py,readonly" `
         $Image python /checks/smoke_server.py).Trim()
     if ($LASTEXITCODE -ne 0) { throw "Application smoke container failed to start" }
@@ -39,9 +46,12 @@ try {
     Start-Sleep -Seconds 3
     python $smokeClient $certificate
     if ($LASTEXITCODE -ne 0) { throw "TLS-verified HTTP checks failed" }
+    docker exec $appId test -s /tmp/demo-loader-smoke/journal.json
+    if ($LASTEXITCODE -ne 0) { throw "The nonroot app did not persist its local journal" }
     Write-Host "Python 3.12 image startup + Caddy TLS verification + landing page + HTTPS assets: PASS"
 } finally {
     if ($caddyId) { docker stop $caddyId | Out-Null }
     if ($appId) { docker stop $appId | Out-Null }
+    docker volume rm $journalVolume | Out-Null
     if (Test-Path -LiteralPath $certificate) { Remove-Item -LiteralPath $certificate }
 }

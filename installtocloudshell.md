@@ -233,21 +233,21 @@ service-principal registrations, management scopes, or role assignments.
 A new azd environment/resource group is therefore not a completely clean
 Microsoft 365 tenant.
 
-If step 12 reports that an existing management scope has the same filter and
-says **"Use the existing management scope instead of creating a new one"**:
+The current helper automatically reuses a scope with the exact same five
+primary SMTP address predicates, even if Exchange has normalized their order,
+case or parentheses. It uses the resolved scope's actual name and a separate
+`DemoMailSend-<principal-object-id>` assignment for each runtime identity.
+It never changes an existing scope or another identity's assignment.
 
-- Do not delete the existing scope or rerun the helper with its name. The helper
-  names assignments after the scope and does not verify an existing assignment's
-  principal, so that alone does not grant the new identity access.
-- Reuse the existing scope only if it selects exactly the configured five
-  mailboxes. The new runtime managed identity still needs its own Exchange
-  registration and `Application Mail.Send` assignment.
-- This error does not establish whether the web app registration was reused.
-  Check `azd env get-value WEB_CLIENT_ID`; Exchange uses the runtime identity IDs
-  below, not that web client ID.
+If an older helper reports **"Use the existing management scope instead of
+creating a new one"** or **"management scope wasn't found"**, update
+[setup-exchange.ps1](scripts/setup-exchange.ps1) in your Cloud Shell checkout
+to the current version before retrying. Do not rerun the failing
+`New-ManagementRoleAssignment` command with a guessed scope name.
 
 In the clean Exchange PowerShell process from step 11, select the intended
-environment with `azd env list` / `azd env select <name>` if necessary, then run:
+environment with `azd env list` / `azd env select <name>` if necessary. Reload
+the current identity IDs and rerun the updated helper:
 
 ```powershell
 $identityClientId = (azd env get-value AZURE_IDENTITY_CLIENT_ID).Trim()
@@ -256,62 +256,23 @@ $demoConfig = Get-Content -LiteralPath (Join-Path "config" "demo-users.json") -R
     ConvertFrom-Json
 $demoUpns = @($demoConfig.users | ForEach-Object { $_.userPrincipalName })
 $outOfScopeTestUpn = Read-Host "Sixth mailbox UPN, not one of the five demo users"
-$existingScopeName = Read-Host "Existing scope name reported by Exchange"
-
-Connect-ExchangeOnline -ShowBanner:$false
-$scope = Get-ManagementScope -Identity $existingScopeName
-$expected = @($demoUpns | ForEach-Object {
-    (Get-EXOMailbox -Identity $_).PrimarySmtpAddress.ToString().ToLowerInvariant()
-} | Sort-Object -Unique)
-$actual = @(Get-Recipient -RecipientPreviewFilter $scope.RecipientFilter -ResultSize Unlimited |
-    ForEach-Object { $_.PrimarySmtpAddress.ToString().ToLowerInvariant() } |
-    Sort-Object -Unique)
-if ($expected.Count -ne 5 -or $actual.Count -ne 5 -or
-    (Compare-Object -ReferenceObject $expected -DifferenceObject $actual)) {
-    throw "Existing scope does not select exactly the configured five mailboxes; stop for review."
-}
-if ($outOfScopeTestUpn -in $demoUpns) {
-    throw "The sixth test mailbox must not be a demo mailbox."
-}
-$null = Get-EXOMailbox -Identity $outOfScopeTestUpn
-
-# The failed helper registers the runtime principal before attempting scope creation.
-$principals = @(Get-ServicePrincipal | Where-Object { $_.AppId -eq $identityClientId })
-if ($principals.Count -ne 1 -or
-    [string]$principals[0].ObjectId -ne $identityPrincipalId) {
-    throw "Exchange registration does not match the selected runtime identity; stop for review."
-}
-
-$assignmentName = "DemoMailSend-$identityPrincipalId"
-if (Get-ManagementRoleAssignment -Identity $assignmentName -ErrorAction SilentlyContinue) {
-    throw "This assignment already exists. Inspect it and run the authorization tests below."
-}
-New-ManagementRoleAssignment `
-    -Name $assignmentName `
-    -App ([guid]$identityPrincipalId) `
-    -Role "Application Mail.Send" `
-    -CustomResourceScope $existingScopeName
+$environmentName = azd env get-value AZURE_ENV_NAME
+& (Join-Path "scripts" "setup-exchange.ps1") `
+    -ApplicationId ([guid]$identityClientId) `
+    -PrincipalObjectId ([guid]$identityPrincipalId) `
+    -DemoUpns $demoUpns `
+    -OutOfScopeTestUpn $outOfScopeTestUpn `
+    -ScopeName "$environmentName-FiveMailboxes"
 ```
 
-For example, if the error names `demodeploy6-FiveMailboxes`, enter that exact
-existing name at the prompt, not the new environment's proposed scope name.
+The helper prints `Using Exchange scope '<actual-name>'` and tests authorization
+for all six mailboxes. If multiple equivalent scopes exist, review them and
+rerun with the exact existing name in `-ScopeName`. A conflicting named scope,
+runtime principal or assignment causes an explicit error instead of a change.
 Do not remove old assignments or registrations without confirming that they
 are retired and unused by other deployments.
-
-Then verify authorization for the **new** runtime identity:
-
-```powershell
-foreach ($upn in $demoUpns) {
-    Write-Host "Demo mailbox: $upn"
-    Test-ServicePrincipalAuthorization -Identity $identityPrincipalId -Resource $upn |
-        Format-Table
-}
-Write-Host "Excluded mailbox: $outOfScopeTestUpn"
-Test-ServicePrincipalAuthorization `
-    -Identity $identityPrincipalId `
-    -Resource $outOfScopeTestUpn |
-    Format-Table
-```
+This error does not establish whether the web app registration was reused:
+`WEB_CLIENT_ID` identifies the web app, not the runtime identity used for Exchange.
 
 Check `Application Mail.Send`: all five demo mailboxes must have `InScope = True`
 and the sixth must have `InScope = False`. Allow permission propagation and

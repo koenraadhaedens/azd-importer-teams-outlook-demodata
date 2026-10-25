@@ -318,7 +318,10 @@ the resource group or running `azd down` does not remove them. If Exchange repor
 that a scope has the same filter, do not recreate or blindly delete it. Reuse it
 only after verifying its exact five-mailbox membership, then grant the **new
 runtime managed identity** its own scoped `Application Mail.Send` assignment.
-The existing scope alone is not permission for the new identity. Follow the
+The current helper resolves equivalent exact-address scopes automatically and
+uses the actual scope name with a principal-specific assignment; reruns verify
+the existing assignment's owner, role and scope. The existing scope alone is
+not permission for the new identity. Follow the
 [Exchange recovery commands](installtocloudshell.md#recovering-from-an-existing-exchange-scope-after-a-fresh-deployment);
 verify five allowed mailboxes and one excluded mailbox before confirming scope.
 This error does not prove that the web app registration was reused:
@@ -568,6 +571,7 @@ az bicep build --file infra\main.bicep --stdout
 az bicep build --file infra\aci.bicep --stdout
 pwsh .\scripts\check-powershell.ps1
 pwsh .\tests\infrastructure.tests.ps1
+pwsh .\tests\exchange.tests.ps1
 docker build -t azd-m365-demo-loader:check .
 pwsh .\scripts\smoke-container.ps1 -Image azd-m365-demo-loader:check -CaddyImage caddy:2.11.4-alpine
 ```

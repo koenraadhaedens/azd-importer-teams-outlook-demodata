@@ -38,6 +38,8 @@ jobs:
         run: ./tests/prerequisites.tests.ps1
       - shell: pwsh
         run: ./tests/registration.tests.ps1
+      - shell: pwsh
+        run: ./tests/exchange.tests.ps1
       - run: docker build --tag demo-loader:ci .
       - shell: pwsh
         # PR validation must not need credentials for the private deployment registry.

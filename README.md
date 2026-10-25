@@ -230,13 +230,15 @@ $operatorId = az ad signed-in-user show --query id --output tsv
 if ($LASTEXITCODE -ne 0 -or -not $operatorId) {
     throw "Could not retrieve your Entra user object ID."
 }
-$operatorIds = ConvertTo-Json -InputObject @($operatorId.Trim()) -Compress
-azd env set OPERATOR_IDS $operatorIds
+azd env set OPERATOR_IDS $operatorId.Trim()
 ```
 
-OPERATOR_IDS is a JSON array of allowed Entra user object IDs, not email
-addresses. To authorize different operators, supply their reviewed object IDs
-instead. All settings above are required for this new environment. Tenant ID,
+For azd, OPERATOR_IDS accepts a single Entra user object ID directly, avoiding
+native-command JSON quoting issues in PowerShell. A JSON array of GUID strings
+is also supported for multiple operators. Deployment validates the IDs and
+serializes the app's required JSON array into an ARM parameter file, not a
+quoted command-line argument. Do not use email addresses. All settings above
+are required for this new environment. Tenant ID,
 managed-identity IDs, public hostname and web client ID are populated during
 provisioning; do not invent or manually set them.
 

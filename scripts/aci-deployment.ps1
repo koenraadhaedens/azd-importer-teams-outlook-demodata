@@ -29,6 +29,28 @@ function Get-AciHostname {
     return $hostname
 }
 
+function Get-OperatorIdsJson {
+    $message = "OPERATOR_IDS must be one Entra user object ID GUID or a JSON array of GUID strings. For one operator, use azd env set OPERATOR_IDS <your-user-object-id> without JSON brackets."
+    $operatorId = [guid]::Empty
+    if ([guid]::TryParse($env:OPERATOR_IDS, [ref]$operatorId)) {
+        $operators = @($operatorId.ToString())
+    } else {
+        try {
+            $operators = ConvertFrom-Json -InputObject $env:OPERATOR_IDS -NoEnumerate -ErrorAction Stop
+        } catch [System.ArgumentException] {
+            throw $message
+        }
+        if ($operators -isnot [array]) { throw $message }
+    }
+    $ids = @(foreach ($id in $operators) {
+        if ($id -isnot [string] -or -not [guid]::TryParse($id, [ref]$operatorId)) {
+            throw $message
+        }
+        $operatorId.ToString()
+    })
+    return ConvertTo-Json -InputObject $ids -Compress
+}
+
 function Invoke-AciDeployment {
     param([switch]$Bootstrap)
     foreach ($name in @("AZURE_RESOURCE_GROUP", "AZURE_IDENTITY_RESOURCE_ID", "AZURE_IDENTITY_CLIENT_ID",
@@ -42,7 +64,7 @@ function Invoke-AciDeployment {
     }
     if ($env:DEMO_TENANT_CONFIRMED -ne "true") { throw "Isolated demo tenant confirmation is required." }
     $null = [guid]::Parse($env:AZURE_TENANT_ID)
-    foreach ($id in @($env:OPERATOR_IDS | ConvertFrom-Json)) { $null = [guid]::Parse($id) }
+    $operatorIds = Get-OperatorIdsJson
     if (-not $Bootstrap) {
         $null = [guid]::Parse($env:WEB_CLIENT_ID)
         if ($env:PUBLIC_HOSTNAME -notmatch '^[a-z0-9-]+(?:\.[a-z0-9-]+)+\.azurecontainer\.io$') {
@@ -60,7 +82,7 @@ function Invoke-AciDeployment {
         webClientId = @{ value = $(if ($Bootstrap) { "" } else { $env:WEB_CLIENT_ID }) }
         bootstrap = @{ value = [bool]$Bootstrap }
         logWorkspaceName = @{ value = $env:AZURE_LOG_WORKSPACE_NAME }
-        operatorIds = @{ value = $env:OPERATOR_IDS }
+        operatorIds = @{ value = $operatorIds }
         authorizedGroupId = @{ value = $(if ($env:AUTHORIZED_GROUP_ID) { $env:AUTHORIZED_GROUP_ID } else { "" }) }
         deliveryEnabled = @{ value = (-not $Bootstrap -and $env:DELIVERY_ENABLED -eq "true") }
         mailboxScopeConfirmed = @{ value = ($env:MAILBOX_SCOPE_CONFIRMED -eq "true") }

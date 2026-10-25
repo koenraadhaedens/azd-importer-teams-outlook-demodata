@@ -172,7 +172,7 @@ try {
         ACI_DNS_LABEL = "label-not-the-returned-host"
         AZURE_LOG_WORKSPACE_NAME = "logs-test"
         ACME_EMAIL = "operator@example.org"
-        OPERATOR_IDS = '["' + [guid]::NewGuid().ToString() + '"]'
+        OPERATOR_IDS = [guid]::NewGuid().ToString()
         DEMO_TENANT_CONFIRMED = "true"
         DELIVERY_ENABLED = "true"
         MAILBOX_SCOPE_CONFIRMED = "true"
@@ -204,6 +204,7 @@ try {
     $bootstrap = $state.deployments[0]
     Assert $bootstrap.bootstrap.value "First deployment must use initialization mode"
     Assert (-not $bootstrap.deliveryEnabled.value) "Bootstrap must disable real delivery"
+    Assert ($bootstrap.operatorIds.value -eq ('["' + $values.OPERATOR_IDS + '"]')) "Serialize a single GUID as a JSON array in the ARM parameter file"
     Assert (-not $bootstrap.PSObject.Properties["journalBlobUrl"] -and
         -not $bootstrap.PSObject.Properties["certificateStorageName"]) "Deployment must not depend on external storage"
     Assert ($bootstrap.webClientId.value -eq "" -and $bootstrap.publicHostname.value -eq "") "Bootstrap must not use guessed IDs/hostname"
@@ -216,9 +217,11 @@ try {
     Assert ($patch.body.web.redirectUris[0] -eq "https://$($state.fqdn)/auth/callback") "Entra must use the discovered FQDN"
     & $initialize
     Assert ($state.deployments.Count -eq 1) "Rerun must not reset an existing group to bootstrap"
+    $env:OPERATOR_IDS = ConvertTo-Json -InputObject @($values.OPERATOR_IDS, [guid]::NewGuid().ToString()) -Compress
     & $deploy
     Assert ($state.deployments.Count -eq 2) "Final deployment was not applied"
     Assert (-not $state.deployments[1].bootstrap.value) "Final deployment must start the real app"
+    Assert (($state.deployments[1].operatorIds.value | ConvertFrom-Json).Count -eq 2) "Keep JSON array support for multiple operators"
     Assert ($state.deployments[1].publicHostname.value -eq $state.fqdn) "Caddy/app hostname differs from Entra"
     Assert ($state.healthUrls[0] -eq "https://$($state.fqdn)/healthz") "Health must check discovered HTTPS endpoint"
     $state.fqdn = "changed.westeurope.azurecontainer.io"

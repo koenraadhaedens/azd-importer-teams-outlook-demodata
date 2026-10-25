@@ -17,6 +17,8 @@ $missing = @("OPERATOR_IDS", "ACME_EMAIL") | Where-Object {
 if ($missing) {
     throw "Missing azd environment values: $($missing -join ', '). Settings belong to the selected azd environment. Configure them with azd env set before provisioning; see README deployment setup."
 }
+. (Join-Path $PSScriptRoot "aci-deployment.ps1")
+$null = Get-OperatorIdsJson
 az bicep version 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Bicep CLI is unavailable. Installing with Azure CLI for the current user..."

@@ -178,3 +178,18 @@ was verified. Temporary state is not durable: stop/restart/update/recreation can
 erase execution history and duplicate-send protection. Export reports and review
 prior sends before executing scenarios after storage loss. Caddy may need to
 obtain certificates again, subject to CA limits.
+
+## Cloud Shell operator-input follow-up
+
+The azd setup now accepts one operator GUID directly, without JSON on the command
+line, as well as a JSON array for multiple operators. A shared validator runs in
+preprovision and final/bootstrap deployment. The app still receives its required
+JSON array through the ARM parameter file; malformed input is not silently
+repaired or ignored.
+
+- All **16** Linux PowerShell prerequisite scenarios passed, including plain
+  GUID input, malformed JSON, non-GUID values, null, object, scalar JSON and
+  non-string array members.
+- Mocked orchestration verified exact single-element JSON-array serialization
+  for bootstrap and a two-operator array for final deployment.
+- PowerShell syntax and repository checks passed.

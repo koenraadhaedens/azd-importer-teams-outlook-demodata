@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 $previousConfirmation = $env:DEMO_TENANT_CONFIRMED
 $previousOperators = $env:OPERATOR_IDS
 $previousEmail = $env:ACME_EMAIL
+$exampleOperatorId = [guid]::NewGuid().ToString()
 $global:prerequisiteMock = @{}
 function global:azd {}
 function global:az {
@@ -41,7 +42,14 @@ try {
         @{ name = "demo tenant not confirmed"; unconfirmed = $true; installs = 0; checks = 0; error = "DEMO_TENANT_CONFIRMED" },
         @{ name = "operators missing"; missingOperators = $true; installs = 0; checks = 0; error = "Missing azd environment values: OPERATOR_IDS." },
         @{ name = "ACME email missing"; missingEmail = $true; installs = 0; checks = 0; error = "Missing azd environment values: ACME_EMAIL." },
-        @{ name = "new environment missing both settings"; missingOperators = $true; missingEmail = $true; installs = 0; checks = 0; error = "Missing azd environment values: OPERATOR_IDS, ACME_EMAIL." }
+        @{ name = "new environment missing both settings"; missingOperators = $true; missingEmail = $true; installs = 0; checks = 0; error = "Missing azd environment values: OPERATOR_IDS, ACME_EMAIL." },
+        @{ name = "single operator GUID"; operators = $exampleOperatorId; installed = $true; installs = 0; checks = 1 },
+        @{ name = "malformed operator JSON"; operators = "[$exampleOperatorId]"; installs = 0; checks = 0; error = "OPERATOR_IDS must be one Entra user object ID GUID" },
+        @{ name = "non-GUID operator"; operators = '["not-a-guid"]'; installs = 0; checks = 0; error = "OPERATOR_IDS must be one Entra user object ID GUID" },
+        @{ name = "JSON null rejected"; operators = "null"; installs = 0; checks = 0; error = "OPERATOR_IDS must be one Entra user object ID GUID" },
+        @{ name = "JSON object rejected"; operators = "{}"; installs = 0; checks = 0; error = "OPERATOR_IDS must be one Entra user object ID GUID" },
+        @{ name = "JSON string rejected"; operators = '"' + $exampleOperatorId + '"'; installs = 0; checks = 0; error = "OPERATOR_IDS must be one Entra user object ID GUID" },
+        @{ name = "non-string array member rejected"; operators = "[42]"; installs = 0; checks = 0; error = "OPERATOR_IDS must be one Entra user object ID GUID" }
     )) {
         $global:prerequisiteMock = @{
             installed = [bool]$case.installed
@@ -53,6 +61,7 @@ try {
         }
         $env:DEMO_TENANT_CONFIRMED = if ($case.unconfirmed) { "false" } else { "true" }
         $env:OPERATOR_IDS = if ($case.missingOperators) { "" } else { '["' + [guid]::NewGuid().ToString() + '"]' }
+        if ($case.operators) { $env:OPERATOR_IDS = $case.operators }
         $env:ACME_EMAIL = if ($case.missingEmail) { " " } else { "operator@example.org" }
         $failure = $null
         try {

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from demo_loader.auth import Auth
 from demo_loader.config import Settings
+from demo_loader.models import Channel, Scenario
 from demo_loader.security import redact
 
 
@@ -180,6 +181,72 @@ def test_binary_mime_still_validates_yaml(client: TestClient, settings: Settings
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid or excessively nested YAML"
+
+
+@pytest.mark.parametrize(
+    ("include_teams", "user_index", "show_button"),
+    [(False, 0, False), (True, 0, True), (True, 1, False)],
+)
+def test_run_controls_match_assigned_teams_activities(
+    client: TestClient,
+    settings: Settings,
+    fake: FakeGateway,
+    include_teams: bool,
+    user_index: int,
+    show_button: bool,
+) -> None:
+    users = list(fake.ids)
+    value = {
+        "schemaVersion": "1.0",
+        "scenarioId": "contextual-teams-controls",
+        "title": "Contextual Teams controls",
+        "author": "Test operator",
+        "createdAt": "2026-10-01T09:00:00Z",
+        "tenantAssumptions": ["Isolated demo tenant"],
+        "requiredUsers": users,
+        "dryRun": False,
+        "activities": [
+            {
+                "id": "email",
+                "type": "email",
+                "user": users[0],
+                "to": [users[1]],
+                "subject": "Fictional demo",
+                "body": "Fictional demo",
+            }
+        ],
+    }
+    if include_teams:
+        value["requiredChannels"] = ["demo"]
+        value["activities"].append(
+            {
+                "id": "teams",
+                "type": "teamsMessage",
+                "user": users[0],
+                "channel": "demo",
+                "body": "Demo",
+            }
+        )
+        client.app.state.resources.channels["demo"] = Channel(
+            teamId=uuid4(), channelId="19:demo@thread.tacv2"
+        )
+    engine = client.app.state.engine
+    run_id = engine.create(Scenario.model_validate(value), str(settings.operator_ids[0]))
+    engine.start(run_id, settings.delivery_enabled)
+    csrf = sign_in(client, fake.ids[users[user_index]], str(settings.tenant_id))
+    page = client.get(f"/runs/{run_id}")
+    assert page.status_code == 200
+    assert ("Execute my ready Teams activities as myself" in page.text) == show_button
+    assert ("After a cross-user dependency completes" in page.text) == include_teams
+    assert ("This scenario contains only email activities" in page.text) == (not include_teams)
+    assert "Cancellation affects only not-yet-started work" in page.text
+    if not show_button:
+        response = client.post(f"/runs/{run_id}/teams", data={"csrf": csrf})
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            "No Teams activities are assigned to your user in this scenario"
+        )
+        assert not fake.calls
 
 
 def test_secret_redaction() -> None:

@@ -15,6 +15,12 @@ executes ready activities as themselves, then signs out. Revisit after cross-use
 dependencies finish. Resume email after Teams if needed; repeated clicks reuse
 the same run and do not replay completed/failed/unknown steps.
 
+Email-only scenarios do not require individual mailbox-owner sign-ins. The run
+page hides Teams controls and cross-user Teams instructions for those scenarios.
+For mixed scenarios, only users with assigned Teams activities see the Teams
+execution button; posting to that endpoint without assigned Teams work returns
+an explicit error before acquiring a delegated token.
+
 Status: pending, running, success, failed, unknown, cancelled, skipped.
 Success means Graph accepted the request (mail 202 is not confirmed delivery).
 HTTP 429 is an explicit rejection and is retried at most three times, respecting

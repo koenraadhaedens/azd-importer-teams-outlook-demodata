@@ -9,8 +9,13 @@
   <p>Application: User.Read.All for resolving configured users; Exchange Application
   RBAC Mail.Send for five scoped mailboxes. Delegated: ChannelMessage.Send for Teams.
   Sign-in: openid and profile. No mail read or Teams migration permissions.</p>
+  {% if has_teams %}
   <p>Teams messages are authored by the currently signed-in assigned demo user.
-  Each distinct user must sign in separately. No chat or email-thread reply support.</p>
+  Each distinct Teams author must sign in separately. No chat or email-thread reply support.</p>
+  {% elif run.scenario %}
+  <p>This scenario contains only email activities. The application sends from the configured
+    mailboxes; individual mailbox owners do not need to sign in.</p>
+  {% endif %}
 </aside>
 <section aria-labelledby="controls">
   <h2 id="controls">Run controls</h2>
@@ -28,15 +33,20 @@
     <button {% if run.dryRun %}disabled{% endif %}>Start / resume ready email steps</button>
   </form>
   {% endif %}
-  {% if demo_user and run.started and not run.cancelled and not run.retired %}
+  {% if has_my_teams and run.started and not run.cancelled and not run.retired %}
   <form method="post" action="/runs/{{ run.id }}/teams">
     <input type="hidden" name="csrf" value="{{ session.csrf }}">
     <button>Execute my ready Teams activities as myself</button>
   </form>
+  {% elif has_teams and demo_user and not has_my_teams %}
+  <p>No Teams activities are assigned to your signed-in user in this scenario.</p>
   {% endif %}
+  {% if has_teams %}
   <p>After a cross-user dependency completes, sign in as the next user and click again.
-    Operators resume email steps that were waiting for Teams. Delays start after dependencies finish
-    (or run start for roots). Cancellation affects only not-yet-started work.</p>
+    Operators resume email steps that were waiting for Teams.</p>
+  {% endif %}
+  <p>Delays start after dependencies finish (or run start for roots).
+    Cancellation affects only not-yet-started work.</p>
   {% if operator %}
   <form method="post" action="/runs/{{ run.id }}/cancel">
     <input type="hidden" name="csrf" value="{{ session.csrf }}">

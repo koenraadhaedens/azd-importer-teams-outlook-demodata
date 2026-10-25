@@ -286,9 +286,12 @@ def create_app(
         operations = []
         per_user: dict[str, dict[str, int]] = {key: {} for key in auth.demo_ids}
         authors: dict[str, str] = {}
+        teams_authors: set[str] = set()
         if scenario:
             for action in scenario["activities"]:
                 authors[action["id"]] = action["user"]
+                if action["type"] != "email":
+                    teams_authors.add(auth.demo_ids[action["user"]])
                 status = run["steps"][action["id"]]["status"]
                 counts = per_user[action["user"]]
                 counts[status] = counts.get(status, 0) + 1
@@ -319,6 +322,8 @@ def create_app(
                 "operations": operations,
                 "operator": auth.is_operator(session.claims),
                 "demo_user": session.claims["oid"] in auth.demo_ids.values(),
+                "has_teams": bool(teams_authors),
+                "has_my_teams": session.claims["oid"] in teams_authors,
                 "per_user": per_user,
                 "authors": authors,
             },
@@ -352,6 +357,14 @@ def create_app(
         run = app.state.engine.get(run_id)
         if run["started"] is None or run["dryRun"]:
             raise HTTPException(400, "An operator must first start this reviewed scenario")
+        scenario = run["scenario"]
+        if not scenario or not any(
+            action["type"] != "email" and action["user"] == key
+            for action in scenario["activities"]
+        ):
+            raise HTTPException(
+                400, "No Teams activities are assigned to your user in this scenario"
+            )
         app.state.engine.kick(run_id, key, await auth.token(session))
         return RedirectResponse(f"/runs/{run_id}", status_code=303)
 

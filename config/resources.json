@@ -1,3 +1,8 @@
 {
-  "channels": {}
+  "channels": {
+    "project-harvest": {
+      "teamId": "19118a6c-c28b-491c-975b-a1e65b78c140",
+      "channelId": "19:LNeZ_xbbrsY2ys63tfCR_v0n4PI5Dc5mM2skko95K-01@thread.tacv2"
+    }
+  }
 }

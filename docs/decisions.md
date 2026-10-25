@@ -57,9 +57,11 @@ successful CA validation remain prerequisites; failures are not bypassed.
 The azd deploy hook creates or replaces the group using the manually published
 images in `config/container-images.json`. It never builds or pushes images.
 Compose extends that same JSON configuration, and smoke tests use it by default.
-Provision creates supporting resources and the initial group, not a new registry. An administrator
-grants the runtime managed identity pull access on each configured existing
-registry. There is no untrusted bootstrap image. Prefer explicit release tags or
+Provision creates supporting resources and the initial group, not a new registry.
+Default images are pulled anonymously, including across tenants; no registry
+credentials or AcrPull grant are needed. Managed-identity image pulls for private
+same-tenant ACR are an explicit opt-in. There is no untrusted bootstrap image.
+Prefer explicit release tags or
 digests; the requested tagless app default uses Docker's implicit `latest`.
 For enterprise deployments prefer Application Gateway/private ACI or another
 managed ingress platform; the POC intentionally avoids their cost.

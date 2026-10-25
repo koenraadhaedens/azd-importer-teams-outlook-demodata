@@ -193,3 +193,27 @@ repaired or ignored.
 - Mocked orchestration verified exact single-element JSON-array serialization
   for bootstrap and a two-operator array for final deployment.
 - PowerShell syntax and repository checks passed.
+
+## Anonymous registry-pull follow-up
+
+The default ACI template no longer supplies managed-identity registry credentials.
+It uses an empty credential list for anonymous image pulls, including registries
+in another tenant. Runtime managed identity remains attached for Graph and
+Entra federation. Private same-tenant ACR authentication is available only through
+the explicit USE_MANAGED_IDENTITY_FOR_IMAGE_PULL=true option; invalid flag values
+stop preprovision.
+
+- Both configured image manifests (`azd-m365-demo-loader:latest` and
+  `caddy:2.11.4-alpine` at acrdefcontainer.azurecr.io) were successfully inspected
+  using separate empty Docker configurations, without stored registry credentials.
+  Those temporary configuration directories were removed.
+- Both Bicep entrypoints compiled. Compiled-template checks verified the anonymous
+  default, conditional registry credentials and unchanged runtime identity.
+- All **19** Linux PowerShell prerequisite scenarios and mocked registration/
+  deployment tests passed, including anonymous bootstrap and opt-in private
+  final-deployment ARM parameter values.
+- PowerShell syntax, editor diagnostics, repository contracts and whitespace
+  checks passed.
+
+This verifies anonymous manifest accessibility and deployment configuration, not
+a live ACI image pull or completed Azure deployment.

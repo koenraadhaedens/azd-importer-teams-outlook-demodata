@@ -46,13 +46,17 @@ entries; Bicep loads their image values as defaults; the smoke script reads them
 unless explicit test overrides are supplied. The deploy hook does not build or
 publish images, and infrastructure no longer creates an unused ACR.
 
-Both defaults use the existing `acrdefcontainer.azurecr.io` registry. The runtime
-identity requires administrator-granted pull permission there. ACI registry
-credential entries are derived from both references and deduplicated, so changing
-either image registry does not silently leave Caddy without pull credentials.
-No registry passwords are stored. Role assignments on existing registries remain
-administrator-managed. App default without a tag uses `latest`; immutable release
-tags/digests are preferable for reliable updates.
+Both defaults use the existing `acrdefcontainer.azurecr.io` registry and are
+pulled anonymously. The default ACI configuration supplies an empty registry
+credential list; it does not attempt managed-identity authentication against a
+registry in another tenant. Runtime managed identity remains attached for Graph
+and web-app federation.
+
+Private same-tenant ACR pulls are an explicit opt-in with
+USE_MANAGED_IDENTITY_FOR_IMAGE_PULL=true. Only then are registry credential entries
+derived from both references and deduplicated. Registry role assignments remain
+administrator-managed. No registry passwords are stored. App references without
+a tag use `latest`; immutable release tags/digests are preferable for updates.
 
 ## Data flow and persistence
 

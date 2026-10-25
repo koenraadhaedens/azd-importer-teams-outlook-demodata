@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 $previousConfirmation = $env:DEMO_TENANT_CONFIRMED
 $previousOperators = $env:OPERATOR_IDS
 $previousEmail = $env:ACME_EMAIL
+$previousImagePull = $env:USE_MANAGED_IDENTITY_FOR_IMAGE_PULL
 $exampleOperatorId = [guid]::NewGuid().ToString()
 $global:prerequisiteMock = @{}
 function global:azd {}
@@ -49,7 +50,10 @@ try {
         @{ name = "JSON null rejected"; operators = "null"; installs = 0; checks = 0; error = "OPERATOR_IDS must be one Entra user object ID GUID" },
         @{ name = "JSON object rejected"; operators = "{}"; installs = 0; checks = 0; error = "OPERATOR_IDS must be one Entra user object ID GUID" },
         @{ name = "JSON string rejected"; operators = '"' + $exampleOperatorId + '"'; installs = 0; checks = 0; error = "OPERATOR_IDS must be one Entra user object ID GUID" },
-        @{ name = "non-string array member rejected"; operators = "[42]"; installs = 0; checks = 0; error = "OPERATOR_IDS must be one Entra user object ID GUID" }
+        @{ name = "non-string array member rejected"; operators = "[42]"; installs = 0; checks = 0; error = "OPERATOR_IDS must be one Entra user object ID GUID" },
+        @{ name = "explicit anonymous image pulls"; imagePull = "false"; installed = $true; installs = 0; checks = 1 },
+        @{ name = "opt-in managed identity image pulls"; imagePull = "true"; installed = $true; installs = 0; checks = 1 },
+        @{ name = "invalid image pull flag"; imagePull = "invalid"; installs = 0; checks = 0; error = "USE_MANAGED_IDENTITY_FOR_IMAGE_PULL must be true or false" }
     )) {
         $global:prerequisiteMock = @{
             installed = [bool]$case.installed
@@ -63,6 +67,7 @@ try {
         $env:OPERATOR_IDS = if ($case.missingOperators) { "" } else { '["' + [guid]::NewGuid().ToString() + '"]' }
         if ($case.operators) { $env:OPERATOR_IDS = $case.operators }
         $env:ACME_EMAIL = if ($case.missingEmail) { " " } else { "operator@example.org" }
+        $env:USE_MANAGED_IDENTITY_FOR_IMAGE_PULL = $case.imagePull
         $failure = $null
         try {
             & (Join-Path $PSScriptRoot "../scripts/prerequisites.ps1")
@@ -92,6 +97,7 @@ try {
     $env:DEMO_TENANT_CONFIRMED = $previousConfirmation
     $env:OPERATOR_IDS = $previousOperators
     $env:ACME_EMAIL = $previousEmail
+    $env:USE_MANAGED_IDENTITY_FOR_IMAGE_PULL = $previousImagePull
     Remove-Item Function:\az, Function:\azd
     Remove-Variable prerequisiteMock -Scope Global
 }

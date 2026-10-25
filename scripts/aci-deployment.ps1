@@ -5,7 +5,7 @@ function Invoke-Azure {
     }
     $result = & az @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "Azure CLI operation failed: $($Arguments[0]). Check permissions, registry pull authorization and resource availability."
+        throw "Azure CLI operation failed: $($Arguments[0]). Check the Azure error above, image tags, registry network access and resource availability. Registry authorization is needed only for private image pulls."
     }
     return $result
 }
@@ -51,6 +51,14 @@ function Get-OperatorIdsJson {
     return ConvertTo-Json -InputObject $ids -Compress
 }
 
+function Get-ManagedIdentityImagePull {
+    $value = $env:USE_MANAGED_IDENTITY_FOR_IMAGE_PULL
+    if ($value -and $value -notin @("true", "false")) {
+        throw "USE_MANAGED_IDENTITY_FOR_IMAGE_PULL must be true or false. Leave it unset or false for anonymous images."
+    }
+    return $value -eq "true"
+}
+
 function Invoke-AciDeployment {
     param([switch]$Bootstrap)
     foreach ($name in @("AZURE_RESOURCE_GROUP", "AZURE_IDENTITY_RESOURCE_ID", "AZURE_IDENTITY_CLIENT_ID",
@@ -78,6 +86,7 @@ function Invoke-AciDeployment {
         acmeEmail = @{ value = $env:ACME_EMAIL }
         identityResourceId = @{ value = $env:AZURE_IDENTITY_RESOURCE_ID }
         identityClientId = @{ value = $env:AZURE_IDENTITY_CLIENT_ID }
+        useManagedIdentityForImagePull = @{ value = (Get-ManagedIdentityImagePull) }
         tenantId = @{ value = $env:AZURE_TENANT_ID }
         webClientId = @{ value = $(if ($Bootstrap) { "" } else { $env:WEB_CLIENT_ID }) }
         bootstrap = @{ value = [bool]$Bootstrap }

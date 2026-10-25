@@ -19,6 +19,9 @@ foreach ($name in @("JOURNAL_BLOB_URL", "AZURE_STORAGE_ACCOUNT_NAME", "AZURE_CER
 }
 $aci = Build-Template "infra/aci.bicep"
 $group = @($aci.resources | Where-Object type -eq "Microsoft.ContainerInstance/containerGroups")[0]
+Assert ($aci.parameters.useManagedIdentityForImagePull.defaultValue -eq $false) "Image pulls must be anonymous by default"
+Assert ($group.properties.imageRegistryCredentials -eq "[if(parameters('useManagedIdentityForImagePull'), variables('registryCredentials'), createArray())]") "Use registry credentials only with explicit managed-identity opt-in"
+Assert ($group.identity.type -eq "UserAssigned") "Anonymous image pulls must not remove the runtime managed identity"
 Assert ($group.properties.ipAddress.type -eq "Public") "Keep the simple public ACI endpoint"
 Assert (($group.properties.ipAddress.ports.port | Sort-Object) -join "," -eq "80,443") "Only Caddy's ports should be public"
 foreach ($name in @("caddy-data", "journal-data")) {

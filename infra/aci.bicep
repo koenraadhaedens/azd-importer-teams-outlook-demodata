@@ -7,6 +7,7 @@ param publicHostname string = ''
 param acmeEmail string
 param image string = loadJsonContent('../config/container-images.json').services.app.image
 param caddyImage string = loadJsonContent('../config/container-images.json').services.caddy.image
+param useManagedIdentityForImagePull bool = false
 param identityResourceId string
 param identityClientId string
 param webClientId string = ''
@@ -26,6 +27,12 @@ var bootstrapCaddyConfig = '''
 '''
 var caddyConfig = bootstrap ? bootstrapCaddyConfig : loadTextContent('../Caddyfile')
 var registryServers = union([split(image, '/')[0]], [split(caddyImage, '/')[0]])
+var registryCredentials = [
+  for server in registryServers: {
+    server: server
+    identity: identityResourceId
+  }
+]
 var applicationStartup = bootstrap
   ? {
       command: ['python', '-c', 'import time; time.sleep(2147483647)']
@@ -79,12 +86,7 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
         logType: 'ContainerInsights'
       }
     }
-    imageRegistryCredentials: [
-      for server in registryServers: {
-        server: server
-        identity: identityResourceId
-      }
-    ]
+    imageRegistryCredentials: useManagedIdentityForImagePull ? registryCredentials : []
     initContainers: [
       {
         name: 'journal-permissions'

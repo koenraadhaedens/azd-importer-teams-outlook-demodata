@@ -25,7 +25,7 @@ flowchart LR
     App -->|Scoped app Mail.Send| Mail[Graph Outlook]
     App -->|Current user's delegated token| Teams[Graph Teams]
     App --> Logs[Structured console / Log Analytics]
-    ACR[Private ACR image] --> ACI
+    ACR[Published container images] --> ACI
 ```
 
 ACI does **not** provide native managed HTTPS ingress. Caddy owns ports 80/443,
@@ -45,7 +45,8 @@ subject to certificate-authority rate limits. For enterprise ingress options see
 ## Prerequisites and tenant preparation
 
 - Azure subscription with ACI, Key Vault and managed-identity deployment rights,
-  plus access to the existing private container registry.
+  plus network access to the configured container registry. Default images
+  support anonymous pulls; registry ownership or pull-role grants are not required.
 - Azure CLI (`az`), Azure Developer CLI (`azd`), and **PowerShell 7**. The
   preprovision hook checks Bicep and runs `az bicep install` if it is unavailable;
   this needs outbound download access and a writable Azure CLI configuration
@@ -124,7 +125,10 @@ Both deployment image references live in
 ACI, Compose and the smoke-test script read this same file. The application
 reference without a tag means `:latest`. You may specify an explicit tag or
 `@sha256:...` digest for either image; immutable digests are recommended for
-repeatable releases. Use fully qualified private registry references.
+repeatable releases. Use fully qualified registry references. Image pulls are
+**anonymous by default**, including from a registry hosted in another tenant.
+The runtime managed identity is still required for Graph and Entra federation,
+not for pulling these public images.
 The Caddy image also supplies `/bin/sh`, `chown` and `chmod` as root for the
 one-time journal-volume permissions initializer; the application stays nonroot.
 
@@ -150,7 +154,6 @@ Compose retains the equivalent proxy topology for test/diagnostic use; it does
 not emulate an ACI managed-identity endpoint or provide a local sign-in mode.
 
 ```powershell
-az acr login --name acrdefcontainer
 docker compose pull
 ```
 
@@ -188,8 +191,9 @@ and a new azd environment. No settings from another deployment are required.
   and manually publish both images as described in
   [Docker and Caddy HTTPS](#docker-and-caddy-https). Cloud Shell deployment needs
   neither a Python environment nor Docker; building images happens separately.
-- Have an administrator available to grant registry pull access, Graph/Exchange
-  permissions, delegated consent and enterprise-app assignments.
+- Have an administrator available to grant Graph/Exchange permissions,
+  delegated consent and enterprise-app assignments. The default anonymous
+  image pulls do not require an AcrPull assignment.
 
 #### 2. Clone and select the target subscription
 
@@ -242,7 +246,7 @@ are required for this new environment. Tenant ID,
 managed-identity IDs, public hostname and web client ID are populated during
 provisioning; do not invent or manually set them.
 
-#### 4. Provision resources and authorize registry pulls
+#### 4. Provision resources and initialize ACI
 
 ```powershell
 azd provision
@@ -252,31 +256,9 @@ The preprovision hook checks required settings and installs Bicep if missing.
 Provisioning creates the resource group, runtime managed identity, vault and
 Log Analytics, and exports their IDs. It does not create storage accounts.
 
-The new managed identity needs registry pull access before ACI can start. The
-postprovision hook may stop at image pull until a registry administrator grants
-that access. For the default standard-RBAC registry:
-
-```powershell
-$principalId = azd env get-value AZURE_IDENTITY_PRINCIPAL_ID
-if ($LASTEXITCODE -ne 0) { throw "Could not retrieve the runtime identity." }
-$registryId = az acr show --name acrdefcontainer --query id --output tsv
-if ($LASTEXITCODE -ne 0) { throw "Could not retrieve the registry ID." }
-az role assignment create --assignee-object-id $principalId `
-    --assignee-principal-type ServicePrincipal --role AcrPull --scope $registryId
-if ($LASTEXITCODE -ne 0) { throw "Could not grant registry pull access." }
-
-# Complete initialization once the new identity's pull permission has propagated:
-azd provision
-```
-
-Use your actual registry name if different. For an ABAC-enabled registry use the
-appropriate **Container Registry Repository Reader** assignment and repository
-conditions instead. Authorize each registry referenced by the image configuration.
-Cross-subscription registries require administrator access at their scope;
-cross-tenant pulls are not configured here. Registry networking must permit ACI
-pulls. No registry password or automatic image build/push is supplied.
-
-With pull access, the postprovision hook creates ACI in safe initialization mode,
+Both configured image tags must be available anonymously and reachable from ACI.
+No registry credentials or cross-tenant identity trust are needed. The
+postprovision hook creates ACI in safe initialization mode,
 discovers its actual FQDN and saves PUBLIC_HOSTNAME/PUBLIC_URL. It creates the web
 registration, enterprise principal and managed-identity trust with matching URLs;
 WEB_CLIENT_ID is saved automatically. No web client secret is created. The app
@@ -341,10 +323,31 @@ configure the variables listed in the workflow. No Azure client secret is used.
 The deployment identity needs deployment/supporting-resource role-assignment
 rights **and pre-authorized Graph application management** for the registration
 hook. It does not need ACR push rights, runtime mail permissions or web credentials.
-The runtime managed identity needs registry pull access separately, not
-application-management privileges.
-Complete registry pull authorization, consent/assignments and Graph/Exchange bootstrap, and
-manually publish both images before dispatch.
+The runtime managed identity has no application-management privileges. Default
+anonymous image pulls need no registry role assignment. Complete consent/
+assignments and Graph/Exchange bootstrap, and manually publish both images
+before dispatch.
+
+### Optional private ACR authentication
+
+Only when using private images in ACR in the runtime identity's tenant, enable:
+
+```powershell
+azd env set USE_MANAGED_IDENTITY_FOR_IMAGE_PULL true
+```
+
+Provisioning creates the runtime identity. Before image pulls can succeed, a
+registry administrator must grant it pull access on each configured registry.
+For standard RBAC registries, use `AcrPull`; for ABAC-enabled registries, use
+**Container Registry Repository Reader** with appropriate repository conditions.
+Use the identity's AZURE_IDENTITY_PRINCIPAL_ID output and the registry resource
+ID as the role-assignment scope. After grants propagate, complete provisioning.
+Private cross-tenant managed-identity pulls are not configured by this option.
+
+Leave this setting unset or `false` for the default anonymous images. This flag
+does not change registry settings, publish images or attach credentials to
+anonymous requests. For GitHub Actions, the matching environment variable is
+optional and defaults to anonymous pulls.
 
 ## Scenario creation and workflow
 

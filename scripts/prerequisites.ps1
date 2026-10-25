@@ -19,6 +19,7 @@ if ($missing) {
 }
 . (Join-Path $PSScriptRoot "aci-deployment.ps1")
 $null = Get-OperatorIdsJson
+$null = Get-ManagedIdentityImagePull
 az bicep version 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Bicep CLI is unavailable. Installing with Azure CLI for the current user..."

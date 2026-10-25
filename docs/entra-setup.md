@@ -6,8 +6,9 @@ client-secret authentication mode. Two identities still have different purposes:
 - **Web app registration:** interactive OIDC sign-in and delegated
   `ChannelMessage.Send`, authenticated using the container's managed identity
   as a federated client assertion rather than a password/certificate.
-- **ACI user-assigned managed identity:** direct runtime Graph/Exchange access,
-  Blob storage, private registry pulls, and proof of identity to the web app.
+- **ACI user-assigned managed identity:** direct runtime Graph/Exchange access
+  and proof of identity to the web app. Private same-tenant registry pulls can
+  optionally use it; default image pulls are anonymous.
 
 The app registration is still required: a managed identity by itself does not
 provide a web redirect URI or delegated user sign-in.
@@ -21,8 +22,8 @@ There is **no manual PUBLIC_HOSTNAME or custom DNS prerequisite**. The hook:
 
 1. Creates the ACI group in initialization mode if it does not already exist:
    the app is dormant, delivery is disabled, and Caddy returns HTTP 503 without
-   requesting a certificate. Both manually published images and registry pull
-   permission are needed already. Existing groups are not reset on reruns.
+   requesting a certificate. Both manually published images must be anonymously
+   pullable by default. Existing groups are not reset on reruns.
 2. Retrieves **ipAddress.fqdn** from Azure (never guesses from the DNS label),
    saves PUBLIC_HOSTNAME/PUBLIC_URL, then invokes
    [register-web-app.ps1](../scripts/register-web-app.ps1). That script checks the
@@ -96,10 +97,9 @@ Now an administrator must:
 4. Grant the runtime identity direct application `User.Read.All` and configure
    the five-mailbox Exchange `Application Mail.Send` scope. Federation does not
    grant these permissions automatically.
-5. Grant registry pull access as described in README. This is needed before
-   initialization can pull images: on a new environment the first provision may
-   stop at that hook until the newly created identity is authorized. Grant pull
-   using provision outputs, then rerun `azd provision`. No custom DNS is needed.
+5. For default anonymous images, no registry grant is required. Only when opting
+   into private same-tenant ACR authentication, grant registry pull access as
+   described in README before initialization can pull those images.
 
 The administrator-only helper remains available, **outside azd hooks**:
 

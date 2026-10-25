@@ -83,8 +83,11 @@ delivery. Manually build/push both images to their configured registry locations
 `azd deploy` consumes `config/container-images.json` without building or pushing.
 For predictable updates change the tag/digest rather than overwriting an unchanged
 reference: ACI may not refresh an image when the declaration has not changed.
-Verify the runtime managed identity has pull permission on each configured
-registry (AcrPull for standard RBAC, repository reader for ABAC registries).
+For default anonymous pulls, verify each image/tag is publicly pullable and
+registry networking allows ACI. Do not configure registry identity credentials.
+Only for opt-in private ACR pulls, verify the runtime managed identity has pull
+permission on each registry (AcrPull for standard RBAC, repository reader for
+ABAC registries) in the same tenant.
 The existing registry is not managed or deleted by this repository's Bicep.
 Incremental ARM deployment does not delete resources removed from a template.
 Any storage accounts created by a storage-backed version are no longer used;

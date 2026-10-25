@@ -173,6 +173,7 @@ try {
         AZURE_LOG_WORKSPACE_NAME = "logs-test"
         ACME_EMAIL = "operator@example.org"
         OPERATOR_IDS = [guid]::NewGuid().ToString()
+        USE_MANAGED_IDENTITY_FOR_IMAGE_PULL = ""
         DEMO_TENANT_CONFIRMED = "true"
         DELIVERY_ENABLED = "true"
         MAILBOX_SCOPE_CONFIRMED = "true"
@@ -204,6 +205,7 @@ try {
     $bootstrap = $state.deployments[0]
     Assert $bootstrap.bootstrap.value "First deployment must use initialization mode"
     Assert (-not $bootstrap.deliveryEnabled.value) "Bootstrap must disable real delivery"
+    Assert (-not $bootstrap.useManagedIdentityForImagePull.value) "Anonymous bootstrap must not request registry identity authentication"
     Assert ($bootstrap.operatorIds.value -eq ('["' + $values.OPERATOR_IDS + '"]')) "Serialize a single GUID as a JSON array in the ARM parameter file"
     Assert (-not $bootstrap.PSObject.Properties["journalBlobUrl"] -and
         -not $bootstrap.PSObject.Properties["certificateStorageName"]) "Deployment must not depend on external storage"
@@ -218,9 +220,11 @@ try {
     & $initialize
     Assert ($state.deployments.Count -eq 1) "Rerun must not reset an existing group to bootstrap"
     $env:OPERATOR_IDS = ConvertTo-Json -InputObject @($values.OPERATOR_IDS, [guid]::NewGuid().ToString()) -Compress
+    $env:USE_MANAGED_IDENTITY_FOR_IMAGE_PULL = "true"
     & $deploy
     Assert ($state.deployments.Count -eq 2) "Final deployment was not applied"
     Assert (-not $state.deployments[1].bootstrap.value) "Final deployment must start the real app"
+    Assert $state.deployments[1].useManagedIdentityForImagePull.value "Preserve opt-in private registry authentication"
     Assert (($state.deployments[1].operatorIds.value | ConvertFrom-Json).Count -eq 2) "Keep JSON array support for multiple operators"
     Assert ($state.deployments[1].publicHostname.value -eq $state.fqdn) "Caddy/app hostname differs from Entra"
     Assert ($state.healthUrls[0] -eq "https://$($state.fqdn)/healthz") "Health must check discovered HTTPS endpoint"

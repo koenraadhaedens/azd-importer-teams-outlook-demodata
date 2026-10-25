@@ -29,15 +29,10 @@ azure-core==1.41.0 \
     --hash=sha256:f46ff5dfcd230f25cf1c19e8a34b8dc08a337b2503e268bb600a16c00db8ad5a
     # via
     #   azure-identity
-    #   azure-keyvault-secrets
     #   azure-storage-blob
 azure-identity==1.26.0 \
     --hash=sha256:3c60d9682b3ac01507388d474cb5a5ffbe54152a96b6cdcaa7013da9315cf186 \
     --hash=sha256:61b4538b87df10d2d6d44b77cd5ea28a8929fd4929d58b45bf3f230f7daba02e
-    # via azd-m365-demo-loader (pyproject.toml)
-azure-keyvault-secrets==4.11.3 \
-    --hash=sha256:193ba3cf9912ae776fb1ba40d147aa3cbfcf5cda5e0e2e35ef8fbe4c78db1217 \
-    --hash=sha256:c77cc80f33d07e1b8cbbda5e7b6b8a1da1471ca917796f9895603a0c2b5f9c2f
     # via azd-m365-demo-loader (pyproject.toml)
 azure-storage-blob==12.31.0 \
     --hash=sha256:0c0cb601d3462491d09ea96023cd791bb9dd4b173bf950daf3cff34ff47ba5b5 \
@@ -432,9 +427,7 @@ idna==3.20 \
 isodate==0.7.2 \
     --hash=sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15 \
     --hash=sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6
-    # via
-    #   azure-keyvault-secrets
-    #   azure-storage-blob
+    # via azure-storage-blob
 jinja2==3.1.6 \
     --hash=sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
@@ -1041,7 +1034,6 @@ typing-extensions==4.16.0 \
     #   anyio
     #   azure-core
     #   azure-identity
-    #   azure-keyvault-secrets
     #   azure-storage-blob
     #   fastapi
     #   opentelemetry-api

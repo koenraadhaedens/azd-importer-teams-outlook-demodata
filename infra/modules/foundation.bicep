@@ -74,24 +74,11 @@ resource tlsShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05
   properties: { shareQuota: 5 }
 }
 
-var secretsUser = subscriptionResourceId(
-  'Microsoft.Authorization/roleDefinitions',
-  '4633458b-17de-408a-b874-0445c86b69e6'
-)
 var blobContributor = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 )
 
-resource secrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(vault.id, identity.id, secretsUser)
-  scope: vault
-  properties: {
-    principalId: identity.properties.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: secretsUser
-  }
-}
 resource writeJournal 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(journal.id, identity.id, blobContributor)
   scope: journal

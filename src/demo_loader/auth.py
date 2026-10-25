@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,15 +25,23 @@ class Session:
 
 
 class Auth:
-    def __init__(self, settings: Settings, demo_ids: dict[str, str]) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        demo_ids: dict[str, str],
+        client_assertion: Callable[[], str] | None = None,
+    ) -> None:
         self.settings, self.demo_ids = settings, demo_ids
+        self.client_assertion = client_assertion
         self.sessions: dict[str, Session] = {}
 
     def client(self, session: Session) -> msal.ConfidentialClientApplication:
+        if self.client_assertion is None:
+            raise RuntimeError("Web authentication requires the ACI managed identity")
         return msal.ConfidentialClientApplication(
             str(self.settings.web_client_id),
             authority=f"https://login.microsoftonline.com/{self.settings.tenant_id}",
-            client_credential=self.settings.web_client_secret.get_secret_value(),
+            client_credential={"client_assertion": self.client_assertion},
             token_cache=session.cache,
             exclude_scopes=["offline_access"],
             enable_pii_log=False,

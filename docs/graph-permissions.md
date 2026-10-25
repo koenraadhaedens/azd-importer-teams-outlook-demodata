@@ -55,12 +55,16 @@ with `Test-ApplicationAccessPolicy`. Policy propagation may be delayed.
 Do not combine this with default RBAC and assume either restricts the other's
 grants. Microsoft describes Application RBAC as the replacement.
 
-## Administrator-only setup permissions (not runtime)
+## Setup permissions (not runtime)
 
-- Application setup: delegated `Application.ReadWrite.All` for a dedicated web
-  registration/service principal, plus `AppRoleAssignment.ReadWrite.All` for
-  enterprise-app user/group assignments.
-- Explicit delegated consent switch: `DelegatedPermissionGrant.ReadWrite.All`.
+- Noninteractive registration hook: pre-authorized deployment identity with
+  Graph application `Application.ReadWrite.All` for dedicated app/SP/FIC
+  creation and updates. Azure resource Owner alone does not authorize Graph.
+  The hook does not grant consent or assign users/groups.
+- Separate administrator helper: delegated `Application.Read.All` and
+  `AppRoleAssignment.ReadWrite.All` for enterprise-app assignments.
+- Administrator-only explicit delegated consent switch:
+  `DelegatedPermissionGrant.ReadWrite.All`.
 - Runtime Graph-role assignment: delegated `Application.Read.All` and
   `AppRoleAssignment.ReadWrite.All`, under an appropriately privileged admin.
 - Exchange setup: Exchange Administrator with appropriate Organization Management
@@ -68,6 +72,11 @@ grants. Microsoft describes Application RBAC as the replacement.
 
 Disconnect administrator sessions after setup. None of these administrative
 permissions belong on the runtime app.
+
+The web app's federated credential trusts the ACI user-assigned managed identity
+for audience `api://AzureADTokenExchange`. This is client authentication, not a
+Graph permission or a replacement for user-interactive Teams consent. Direct
+runtime Graph permissions remain on the managed identity itself.
 
 ## Official sources
 

@@ -1,7 +1,7 @@
 from pathlib import Path
 from uuid import UUID
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,7 +9,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     tenant_id: UUID
     web_client_id: UUID
-    web_client_secret: SecretStr = SecretStr("")
     public_url: str = "http://localhost:8000"
     operator_ids: list[UUID] = Field(default_factory=list)
     authorized_group_id: UUID | None = None
@@ -25,15 +24,11 @@ class Settings(BaseSettings):
     max_concurrency: int = Field(default=2, ge=1, le=5)
     max_runs: int = Field(default=100, ge=1, le=1000)
     max_sessions: int = Field(default=200, ge=5, le=1000)
-    mail_client_id: UUID | None = None
-    mail_client_secret: SecretStr = SecretStr("")
-    managed_identity_client_id: str = ""
-    key_vault_url: str = ""
-    web_secret_name: str = "web-client-secret"
+    managed_identity_client_id: UUID | None = None
     journal_blob_url: str = ""
     session_seconds: int = Field(default=3600, ge=300, le=3600)
 
-    @field_validator("authorized_group_id", "mail_client_id", mode="before")
+    @field_validator("authorized_group_id", "managed_identity_client_id", mode="before")
     @classmethod
     def empty_optional_id(cls, value: object) -> object:
         return None if value == "" else value

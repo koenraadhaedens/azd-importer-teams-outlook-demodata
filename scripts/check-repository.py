@@ -41,7 +41,10 @@ def main() -> None:
     for path in Path(".github/workflows").glob("*.yml"):
         # GitHub uses YAML 1.2; PyYAML's 1.1 loader interprets the key "on" as bool.
         assert yaml.safe_load(path.read_text("utf-8"))["jobs"], f"Missing workflow jobs: {path}"
-    assert load_yaml(Path("azure.yaml").read_bytes())["hooks"]["predeploy"]
+    hooks = load_yaml(Path("azure.yaml").read_bytes())["hooks"]
+    assert hooks["predeploy"]
+    assert hooks["postprovision"]["run"] == "./scripts/register-web-app.ps1"
+    assert hooks["postprovision"]["interactive"] is False
     assert load_yaml(Path("compose.yaml").read_bytes())["services"]["app"].get("ports") is None
     images = json.loads(Path("config/container-images.json").read_text("utf-8"))
     assert set(images) == {"services"}

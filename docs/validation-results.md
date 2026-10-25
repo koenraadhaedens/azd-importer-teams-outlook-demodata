@@ -85,3 +85,33 @@ administrator prerequisite.
 - No images were pushed, and no access to the private `acrdefcontainer` registry
   or Azure deployment was attempted. Its contents, pull permissions and network
   reachability remain administrator acceptance checks.
+
+## Secretless ACI registration follow-up
+
+Runtime web-client and local-mail secret paths were removed. MSAL now uses a
+lazy assertion callback backed by ACI's user-assigned managed identity for
+`api://AzureADTokenExchange/.default`. Direct app-only Graph calls continue to
+use the managed identity's own Graph token and explicit runtime grants.
+
+- **48 Python tests passed** on Windows and target Linux Python 3.12, including
+  lazy assertions, assigned-identity selection and no secret/developer fallback.
+- PowerShell 7 mocked registration tests passed: create, rerun without duplicates,
+  callback/logout URL generation/update, FIC issuer/subject/audience,
+  assignment-required enterprise principal, tenant rejection and explicit Graph
+  authorization failure without interactive fallback.
+- Ruff, mypy, Bandit and repository contract checks passed.
+- Both Bicep entrypoints compiled; PowerShell scripts parsed successfully.
+- Refreshed Python 3.12 hash lock removes unused azure-keyvault-secrets;
+  pip-audit reported no known vulnerabilities.
+- The updated production image built successfully.
+- The rebuilt image passed Caddy 2.11.4 TLS-chain/hostname, HSTS, health,
+  HTML/CSS and HTTP-to-HTTPS checks with the no-write mock gateway.
+
+The noninteractive postprovision hook uses an already-authorized **deployment**
+identity; it does not grant consent or users/groups access. These remain
+administrator tasks as explicitly selected. It stores no credential and the
+runtime has no app-registration management privilege.
+
+These are mocked/offline checks, not claims of live Entra registration,
+authorization-code redemption with federation, Azure deployment or user sign-in.
+Those require the administrator's real tenant and permission bootstrap.

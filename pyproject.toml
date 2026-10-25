@@ -18,7 +18,6 @@ dependencies = [
   "httpx>=0.28,<1",
   "msal>=1.34,<2",
   "azure-identity>=1.25,<2",
-  "azure-keyvault-secrets>=4.10,<5",
   "azure-storage-blob>=12.27,<13",
   "nh3>=0.3.2,<1",
   "email-validator>=2.3,<3",

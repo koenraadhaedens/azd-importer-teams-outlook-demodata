@@ -11,7 +11,6 @@ param identityResourceId string
 param identityClientId string
 param webClientId string
 param tenantId string = tenant().tenantId
-param vaultUrl string
 param journalBlobUrl string
 param operatorIds string
 param authorizedGroupId string = ''
@@ -78,7 +77,6 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
             { name: 'MAILBOX_SCOPE_CONFIRMED', value: string(mailboxScopeConfirmed) }
             { name: 'ALLOW_EXTERNAL_RECIPIENTS', value: string(allowExternalRecipients) }
             { name: 'MANAGED_IDENTITY_CLIENT_ID', value: identityClientId }
-            { name: 'KEY_VAULT_URL', value: vaultUrl }
             { name: 'JOURNAL_BLOB_URL', value: journalBlobUrl }
           ]
           readinessProbe: {

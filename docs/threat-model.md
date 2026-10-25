@@ -1,7 +1,7 @@
 # Threat model
 
 Assets: demo mailbox/channel integrity, tenant identities, delegated and
-application tokens, web credential, TLS private keys, scenario bodies and replay
+application tokens, managed-identity federation trust, TLS private keys, scenario bodies and replay
 records. Trust boundaries: browser -> Caddy -> FastAPI, Entra -> session,
 uploaded YAML -> typed plan, app -> Graph, app -> durable Blob, sidecar -> TLS
 storage, CI/deployer -> Azure control plane.

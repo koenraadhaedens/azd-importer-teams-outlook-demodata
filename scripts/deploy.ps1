@@ -7,8 +7,12 @@ function Invoke-Azure {
     return $result
 }
 
+$env:WEB_CLIENT_ID = (& azd env get-value WEB_CLIENT_ID).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $env:WEB_CLIENT_ID) {
+    throw "WEB_CLIENT_ID is missing; run azd provision to register the managed-identity-backed web app."
+}
 foreach ($name in @("AZURE_RESOURCE_GROUP", "AZURE_IDENTITY_RESOURCE_ID", "AZURE_IDENTITY_CLIENT_ID",
-    "AZURE_KEY_VAULT_ENDPOINT", "JOURNAL_BLOB_URL", "ACI_NAME", "ACI_DNS_LABEL",
+    "JOURNAL_BLOB_URL", "ACI_NAME", "ACI_DNS_LABEL",
     "AZURE_LOG_WORKSPACE_NAME", "AZURE_CERT_STORAGE_NAME", "PUBLIC_HOSTNAME", "ACME_EMAIL", "WEB_CLIENT_ID",
     "OPERATOR_IDS", "AZURE_TENANT_ID")) {
     if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing azd environment value: $name" }
@@ -37,7 +41,6 @@ $parameters = @{
     identityClientId = @{ value = $env:AZURE_IDENTITY_CLIENT_ID }
     tenantId = @{ value = $env:AZURE_TENANT_ID }
     webClientId = @{ value = $env:WEB_CLIENT_ID }
-    vaultUrl = @{ value = $env:AZURE_KEY_VAULT_ENDPOINT }
     journalBlobUrl = @{ value = $env:JOURNAL_BLOB_URL }
     logWorkspaceName = @{ value = $env:AZURE_LOG_WORKSPACE_NAME }
     certificateStorageName = @{ value = $env:AZURE_CERT_STORAGE_NAME }
@@ -71,4 +74,4 @@ for ($i = 0; $i -lt 12; $i++) {
     }
     Start-Sleep -Seconds 10
 }
-if (-not $ready) { throw "HTTPS readiness failed. Configure DNS, Graph roles and Key Vault credential; see troubleshooting." }
+if (-not $ready) { throw "HTTPS readiness failed. Check DNS, runtime Graph roles and managed-identity trust; see troubleshooting." }

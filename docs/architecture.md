@@ -47,8 +47,12 @@ tags/digests are preferable for reliable updates.
 
 ## Data flow and persistence
 
-Startup reads Key Vault through managed identity and resolves five UPNs with
-Graph. Failure prevents readiness. Operator upload stores a normalized scenario
+Startup uses ACI's user-assigned managed identity and resolves five UPNs with
+Graph. Failure prevents readiness. The web app uses a managed-identity token for
+AzureADTokenExchange as its federated MSAL client assertion; there is no stored
+web credential or Key Vault read. A pre-authorized deployment identity creates
+the registration/URLs/trust in the azd postprovision hook; administrator consent
+and enterprise assignments remain separate. Operator upload stores a normalized scenario
 and SHA-256 fingerprint. Each step has its own idempotency key.
 
 Before Graph writes, the journal persists running state. Local storage uses

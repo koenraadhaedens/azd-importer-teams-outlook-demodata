@@ -20,7 +20,7 @@ flowchart LR
       Caddy -->|loopback 8000, not public| App[FastAPI / Jinja / engine]
     end
     Caddy --> Certs[Private Azure Files TLS state]
-    App -->|Managed identity| Vault[Key Vault web credential]
+    App -->|Managed-identity federated assertion| Entra
     App -->|ETag journal| Blob[Private Azure Blob]
     App -->|Scoped app Mail.Send| Mail[Graph Outlook]
     App -->|Current user's delegated token| Teams[Graph Teams]
@@ -56,8 +56,8 @@ and WAF/private networking options see [architecture](docs/architecture.md).
 |---|---|---|
 | Interactive web app | delegated `ChannelMessage.Send` | Normal Teams channel posts/replies as signed-in user. Permission is not intrinsically admin-consent-only, but this deployment uses explicit tenant-admin consent. |
 | Interactive web app | OIDC `openid`, `profile` | MSAL sign-in and identity claims; no mailbox read. |
-| Runtime managed identity / local mail app | application `User.Read.All` | Resolve the five configured UPNs at startup using `/users` with only `id,userPrincipalName` selected; **admin consent required**. |
-| Runtime managed identity / local mail app | Exchange RBAC `Application Mail.Send` | `/users/{id}/sendMail`, scoped to five mailboxes by Exchange admin. **Not an additional unscoped Entra Mail.Send grant.** |
+| Runtime managed identity | application `User.Read.All` | Resolve the five configured UPNs at startup using `/users` with only `id,userPrincipalName` selected; **admin consent required**. |
+| Runtime managed identity | Exchange RBAC `Application Mail.Send` | `/users/{id}/sendMail`, scoped to five mailboxes by Exchange admin. **Not an additional unscoped Entra Mail.Send grant.** |
 
 Mail.Send supports unattended sending. The preferred authorization is Exchange
 Application RBAC rather than a tenant-wide Entra grant. A documented legacy
@@ -70,43 +70,38 @@ in and executes only assigned ready actions. Five distinct authors require five
 interactive authentications. There is no password storage, ROPC,
 `Teamwork.Migrate.All`, beta endpoint, chat support or email-thread reply support.
 
-## Local development
+## Development and authentication
+
+**The supported runtime is Azure ACI with a user-assigned managed identity.**
+There is no local secret-based sign-in or mail identity. The web app registration
+trusts the ACI identity through federation, eliminating the web client secret and
+Key Vault credential retrieval. It still provides interactive user sign-in;
+managed identity does not replace delegated Teams authorship.
+
+The noninteractive azd postprovision hook creates/updates the web registration,
+derives redirect/logout URLs from PUBLIC_HOSTNAME, configures managed-identity
+trust, and saves WEB_CLIENT_ID automatically. The deployment identity must
+already have Entra application-management authorization. **Consent and
+enterprise-app assignments remain administrator steps**, not automatic grants.
+See [Entra setup](docs/entra-setup.md) for bootstrap and migration details.
+
+Replace example UPNs in [config/demo-users.yaml](config/demo-users.yaml); exactly
+five distinct keys and UPNs are mandatory. Configure channel aliases in
+[config/resources.yaml](config/resources.yaml). Never put credentials in either.
+Keep completed configurations out of public commits.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --require-hashes -r requirements.lock
 python -m pip install -e ".[dev]"
-Copy-Item .env.example .env
-```
-
-Configure the ignored `.env` using [Entra setup](docs/entra-setup.md):
-
-- `TENANT_ID`, `WEB_CLIENT_ID`, `WEB_CLIENT_SECRET`.
-- `OPERATOR_IDS` as a JSON array of allowed operator object IDs, or
-  `AUTHORIZED_GROUP_ID` with emitted direct security-group claims.
-- `DEMO_TENANT_CONFIRMED=true` after confirming isolation.
-- Separate `MAIL_CLIENT_ID`/`MAIL_CLIENT_SECRET`, with explicit directory and
-  scoped Exchange permissions. Do not reuse the interactive application's
-  credential for this role.
-- Keep `DELIVERY_ENABLED=false` until scope tests pass. Then explicitly set
-  `MAILBOX_SCOPE_CONFIRMED=true` and `DELIVERY_ENABLED=true`.
-
-Replace example UPNs in [config/demo-users.yaml](config/demo-users.yaml); exactly
-five distinct keys and UPNs are mandatory. Configure channel aliases in
-[config/resources.yaml](config/resources.yaml). Never put credentials in either.
-Mount configuration outside the image using `USERS_FILE`/`RESOURCES_FILE` for
-local Docker if preferred. Keep completed configurations out of public commits.
-
-```powershell
 python -m demo_loader.cli examples\demo-scenario.yaml
-uvicorn demo_loader.app:create_app --factory --host 127.0.0.1 --port 8000 --no-access-log
+pytest -q
 ```
 
-Open `http://localhost:8000`. Startup resolves all five users and fails explicitly
-on missing users, credentials or Graph consent. There is **no local auth bypass**.
-Do not expose development HTTP publicly. `.env` supports local secrets but is
-ignored by Git and Docker; production uses Key Vault instead.
+Offline validation and mocked tests work locally. Real authentication/Graph
+execution requires ACI's identity endpoint. Startup fails without managed identity
+or required Graph authorization; it never falls back to a developer CLI identity.
 
 ## Docker and Caddy HTTPS
 
@@ -140,16 +135,13 @@ docker tag caddy:2.11.4-alpine $images.services.caddy.image
 docker push $images.services.caddy.image
 ```
 
-After both images have been published:
+After both images have been published, ACI deployment is the supported runtime.
+Compose retains the equivalent proxy topology for test/diagnostic use; it does
+not emulate an ACI managed-identity endpoint or provide a local sign-in mode.
 
 ```powershell
-# Configure .env: PUBLIC_URL=https://localhost, PUBLIC_HOSTNAME=localhost,
-# ACME_EMAIL=your administrative email. Register the HTTPS callback in Entra.
 az acr login --name acrdefcontainer
 docker compose pull
-docker compose up -d
-docker compose logs app caddy
-docker compose down
 ```
 
 The Compose app has **no published port**; Caddy alone publishes 80/443 on
@@ -161,15 +153,8 @@ publishing Compose ports beyond loopback is an explicit administrator action.
 Do not run multiple application replicas or workers. Named volumes preserve the
 journal and TLS keys; `docker compose down -v` destroys those records and keys.
 
-Direct image run for loopback-only development is also supported:
-
-```powershell
-docker build -t azd-m365-demo-loader:local .
-docker run --rm --env-file .env -p 127.0.0.1:8000:8000 `
-  --mount type=volume,source=demo-journal,target=/app/data azd-m365-demo-loader:local
-```
-
-Use the HTTP localhost PUBLIC_URL and callback for that direct development run.
+The TLS smoke test injects a no-write test gateway; it does not bypass
+authentication in the production image.
 
 ## Azure deployment with azd
 
@@ -185,17 +170,19 @@ azd env set AZURE_LOCATION westeurope
 azd env set DEMO_TENANT_CONFIRMED true
 azd env set PUBLIC_HOSTNAME loader.your-controlled-domain.example
 azd env set ACME_EMAIL your-admin-mailbox@example.org
-azd env set WEB_CLIENT_ID <your-web-app-client-id>
 azd env set OPERATOR_IDS '["<your-operator-object-id>"]'
 # Ensure AZURE_TENANT_ID targets the CDX tenant; azd prompts for subscription.
 ```
 
-1. Run the idempotent [Entra setup script](scripts/setup-entra.ps1), or follow the
-   [manual fallback](docs/entra-setup.md). Assign operators and all five demo
-   users (or their allowed group) to the enterprise app; grant delegated consent.
+1. Pre-authorize the **deployment identity** for application registration in
+   Entra as described in [Entra setup](docs/entra-setup.md). Do not grant
+   application-administration permissions to the runtime ACI identity.
 2. First-time identity bootstrap: `azd provision` creates the resource group,
       runtime managed identity, vault, journal storage, certificate share and
    Log Analytics. Read its outputs with `azd env get-values`; keep them private.
+   Its **postprovision hook** automatically creates the web registration,
+   enterprise principal and managed-identity trust, including HTTPS URLs.
+   WEB_CLIENT_ID is saved automatically; no secret is generated or stored.
       A registry administrator must grant that identity pull access on the existing
       registry; it is not implicitly granted by ACI or managed identity:
 
@@ -216,14 +203,16 @@ azd env set OPERATOR_IDS '["<your-operator-object-id>"]'
    [grant-graph-identity.ps1](scripts/grant-graph-identity.ps1). Configure the
    five-mailbox scope with [setup-exchange.ps1](scripts/setup-exchange.ps1);
    verify all five allowed mailboxes and a sixth forbidden mailbox.
-4. An administrator with **Key Vault Secrets Officer** (not implicitly granted
-   to the deployer) stores the interactive app credential in the provisioned
-   vault as `web-client-secret`. Use the portal secure value field or a protected
-   secret file; do not put the secret on a command line or in azd variables.
+4. An administrator grants delegated ChannelMessage.Send consent and assigns
+   operators/the five demo users or allowed groups to the enterprise app. Use
+   [setup-entra.ps1](scripts/setup-entra.ps1) with the saved WEB_CLIENT_ID, or the
+   portal. Registration alone intentionally grants neither consent nor access.
+   Key Vault is retained for optional future secrets; web authentication does not
+   read it. Existing secret/Secrets User grants should be retired after migration.
 5. Set the custom DNS CNAME to
    `<ACI_DNS_LABEL>.<AZURE_LOCATION>.azurecontainer.io` from provision outputs
    (verify the actual FQDN emitted by deployment). The deployment hook also prints
-   the actual ACI FQDN. Register `https://<hostname>/auth/callback` in Entra.
+   the actual ACI FQDN. The hook already registers the configured HTTPS callback.
 6. Configure actual demo users/resources locally and manually build/push the app
    image. Publish Caddy to the configured location as well. The deploy workflow
    does not rebuild packaged configuration or publish images.
@@ -243,7 +232,8 @@ Once administrator-owned prerequisites and the manually published images exist,
 image references, and checks the HTTPS health
 endpoint. A failed readiness check is a failed deployment, not success.
 Propagation of Entra consent, Azure RBAC or DNS can require a later retry.
-App registration/consent is deliberately not silently automated by `azd up`.
+App registration and managed-identity federation are automated; delegated
+consent and enterprise-app assignments are deliberately not.
 
 For updates publish a new image and update its tag/digest in the configuration,
 then run `azd deploy`; for infrastructure changes run `azd up`. Prefer a new
@@ -258,10 +248,12 @@ marks interrupted writes unknown rather than replaying them.
 manual dispatch, `azure/login` and `azd auth login` with GitHub federation.
 Use `azd pipeline config` to bootstrap the federated identity/environment, then
 configure the variables listed in the workflow. No Azure client secret is used.
-The deployment identity needs deployment and supporting-resource role-assignment
-rights; it does not need ACR build/push rights, runtime Graph permissions or web-app
-credentials. The runtime managed identity needs registry pull access separately.
-Complete registry pull authorization and Graph/Exchange/vault bootstrap, and
+The deployment identity needs deployment/supporting-resource role-assignment
+rights **and pre-authorized Graph application management** for the registration
+hook. It does not need ACR push rights, runtime mail permissions or web credentials.
+The runtime managed identity needs registry pull access separately, not
+application-management privileges.
+Complete registry pull authorization, consent/assignments and Graph/Exchange bootstrap, and
 manually publish both images before dispatch.
 
 ## Scenario creation and workflow

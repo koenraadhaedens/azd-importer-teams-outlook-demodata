@@ -14,8 +14,21 @@ No `Teamwork.Migrate.All`, bot, beta endpoint, or password grant is used.
 An Entra confidential web app performs OIDC sign-in and delegated Teams calls.
 A user-assigned managed identity resolves the five users using application
 `User.Read.All` and sends mail through Graph `/users/{id}/sendMail`.
-Local development uses an explicit separate mail application credential.
+Runtime is Azure ACI only; local development is limited to offline/mock checks.
 Managed identity conveys no Graph permissions by itself.
+
+The web app authenticates using a lazy MSAL client assertion obtained from the
+container's user-assigned identity for `api://AzureADTokenExchange/.default`.
+A federated identity credential on the web registration trusts that identity's
+principal ID in the same tenant. No web secret, local credential fallback or
+Key Vault read is used. Provision retains the vault for future secrets without
+granting the runtime access.
+
+The azd noninteractive postprovision hook registers the app, URLs and federation
+using a **separate pre-authorized deployment identity**. It requests but does not
+consent to ChannelMessage.Send, creates an assignment-required enterprise app,
+and saves WEB_CLIENT_ID. Administrator consent/user assignments remain explicit
+manual steps. Runtime receives no app-registration administration privileges.
 
 Prefer Exchange Online **Application RBAC**, assigning `Application Mail.Send`
 only for a scope containing the five mailboxes. Do not additionally grant the

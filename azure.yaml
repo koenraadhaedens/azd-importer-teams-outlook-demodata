@@ -11,6 +11,10 @@ hooks:
     shell: pwsh
     run: ./scripts/prerequisites.ps1
     interactive: true
+  postprovision:
+    shell: pwsh
+    run: ./scripts/register-web-app.ps1
+    interactive: false
   predeploy:
     shell: pwsh
     run: ./scripts/deploy.ps1

@@ -10,15 +10,13 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 
 import httpx
-import msal
 from azure.identity import ManagedIdentityCredential
-from azure.keyvault.secrets import SecretClient
 from azure.storage.blob import BlobClient
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import SecretStr, ValidationError
+from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 
 from demo_loader.auth import SCOPES, Auth, csrf
@@ -48,28 +46,15 @@ def create_app(
         for name in ("httpx", "httpcore", "msal", "azure"):
             logging.getLogger(name).setLevel(logging.WARNING)
         credential: ManagedIdentityCredential | None = None
-        local_msal: msal.ConfidentialClientApplication | None = None
         if cfg.managed_identity_client_id:
-            credential = ManagedIdentityCredential(client_id=cfg.managed_identity_client_id)
-            if cfg.key_vault_url:
-                with SecretClient(
-                    cfg.key_vault_url, credential, connection_timeout=5, read_timeout=15
-                ) as vault:
-                    secret = await asyncio.to_thread(vault.get_secret, cfg.web_secret_name)
-                    if not secret.value:
-                        raise RuntimeError("Web credential missing from Key Vault")
-                    cfg.web_client_secret = SecretStr(secret.value)
-        elif cfg.mail_client_id and cfg.mail_client_secret.get_secret_value():
-            local_msal = msal.ConfidentialClientApplication(
-                str(cfg.mail_client_id),
-                authority=f"https://login.microsoftonline.com/{cfg.tenant_id}",
-                client_credential=cfg.mail_client_secret.get_secret_value(),
-                enable_pii_log=False,
-            )
+            credential = ManagedIdentityCredential(client_id=str(cfg.managed_identity_client_id))
         elif gateway is None:
-            raise RuntimeError("Configure managed identity or local mail application credential")
-        if not cfg.web_client_secret.get_secret_value() and gateway is None:
-            raise RuntimeError("Configure confidential web application credential")
+            raise RuntimeError("Configure the ACI user-assigned MANAGED_IDENTITY_CLIENT_ID")
+
+        def client_assertion() -> str:
+            if credential is None:
+                raise RuntimeError("Web authentication requires the ACI managed identity")
+            return credential.get_token("api://AzureADTokenExchange/.default").token
 
         async def app_token() -> str:
             if credential:
@@ -77,13 +62,6 @@ def create_app(
                     credential.get_token, "https://graph.microsoft.com/.default"
                 )
                 return token.token
-            if local_msal:
-                result = await asyncio.to_thread(
-                    local_msal.acquire_token_for_client,
-                    scopes=["https://graph.microsoft.com/.default"],
-                )
-                if "access_token" in result:
-                    return str(result["access_token"])
             raise RuntimeError(
                 "Application token acquisition failed; inspect identity configuration"
             )
@@ -119,7 +97,7 @@ def create_app(
         app.state.engine = Engine(
             durable, adapter, cfg.max_concurrency, cfg.max_runs, configuration_fingerprint
         )
-        app.state.auth = Auth(cfg, resolved)
+        app.state.auth = Auth(cfg, resolved, client_assertion if credential else None)
         logger.info(json.dumps({"event": "startup", "resolvedUserSlots": list(resolved)}))
         try:
             yield

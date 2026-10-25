@@ -4,7 +4,7 @@ Keep Graph contracts grounded in official v1.0 documentation. Do not add beta,
 migration-message impersonation, password grants, arbitrary scenario code or broad
 mailbox reads. Preserve fail-closed authentication and explicit mailbox scope.
 
-Install development dependencies using [README](README.md#local-development).
+Install development dependencies using [README](README.md#development-and-authentication).
 Before a change: read the typed models, Graph interface and decisions. Add focused
 tests for trust-boundary behavior, then run README validation commands.
 Regenerate both schemas with `python -m demo_loader.cli --write-schema` after a

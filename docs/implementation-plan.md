@@ -9,6 +9,10 @@ name is retained; no remote or history is rewritten.
    scenario contract, safe bounded YAML parsing, resource mappings and previews.
 3. Implement single-tenant Entra authorization-code sign-in, server-side sessions,
    CSRF, explicit operator/user authorization, and delegated Teams token handling.
+   Azure ACI runtime uses its user-assigned managed identity as a federated web
+   app client assertion, not a local/Key Vault client secret. The noninteractive
+   azd postprovision hook registers URLs/app/trust; consent and assignments
+   remain administrator-controlled.
 4. Implement Graph adapters and a durable execution journal: assisted Teams,
    app-only mail, cancellation, dependencies, bounded timing, safe retries,
    duplicate protection, dry-run and redacted reports.

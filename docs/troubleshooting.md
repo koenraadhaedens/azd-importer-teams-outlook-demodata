@@ -16,7 +16,8 @@
 | File rejected by MIME | Save as UTF-8 .yaml/.yml and send one of the documented YAML/text MIME types; octet-stream is not accepted. |
 | 413 / 429 | Reduce file size or wait for the one-minute request window; do not remove bounds to bypass abuse protection. |
 | Session lost / group overage | Restart loses memory sessions; sign in again. Use explicit allowed object IDs or a small directly emitted group. |
-| Key Vault 403 | Verify managed identity Secrets User role and administrator Secrets Officer role separately; allow RBAC propagation. |
+| Federation/token exchange fails | Verify the web app's aci-managed-identity credential: same tenant, issuer ending /v2.0, subject equal to the identity principal ID (not client ID), audience api://AzureADTokenExchange. Allow propagation. No web secret or vault access is required. |
+| Registration hook 403 | Pre-authorize the separate deployment identity for Graph application management; Azure subscription Owner is insufficient. The hook will not prompt for login/consent or silently skip setup. |
 | Journal 503 | Stop competing instances; check Blob availability/ETag conflicts, account permissions and local disk. Restart after correcting cause, preserving journal. |
 | HTTPS unavailable | Check public DNS CNAME, CAA records, port 80/443 reachability, Caddy ACME logs and certificate-share mount. ACI has no native managed TLS. |
 | HTTPS works but app 502 | Check startup/config/consent failures in application logs; Caddy is only a reverse proxy, not readiness proof. |

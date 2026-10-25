@@ -66,8 +66,9 @@ ACI diagnostics feed Log Analytics; use container logs for operational failures,
 correlating the application run ID with Graph `client-request-id`. Do not enable
 raw body/header logging or capture authorization-code callback URLs.
 
-Check Caddy TLS renewal logs and HTTPS health regularly. Token/credential
-rotation requires an application restart so Key Vault is reread. No distributed
+Check Caddy TLS renewal logs and HTTPS health regularly. Web client authentication
+is secretless; Azure Identity refreshes managed-identity assertions in memory.
+Federation trust changes can take time to propagate. No distributed
 session store is provided; users must sign in again after replacement.
 
 ## Upgrade
@@ -93,7 +94,7 @@ the configuration fingerprint intentionally blocks such runs.
    `Remove-ManagementRoleAssignment`, `Remove-ManagementScope`,
    `Remove-ServicePrincipal`.
 4. Revoke delegated consent/assignments and delete the dedicated web registration.
-   Remove runtime Graph role grants and local mail app if applicable.
+   Remove runtime Graph role grants and the web registration's federated trust.
 5. Run `azd down`; the hook-created ACI group is in the deleted resource group.
 6. Remove custom DNS and dedicated pipeline federation/identity if no longer used.
 7. Key Vault purge protection prevents immediate purge/name reuse; wait the

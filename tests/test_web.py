@@ -88,8 +88,10 @@ def test_upload_preview_dryrun_and_report(
     ("filename", "mime", "size", "expected"),
     [
         ("bad.json", "text/yaml", 20, 400),
+        ("bad.yaml", "application/json", 20, 400),
         ("bad.yaml", "application/octet-stream", 20, 400),
         ("big.yaml", "text/yaml", 65537, 413),
+        ("big.yaml", "application/octet-stream", 65537, 413),
         ("huge.yaml", "text/yaml", 100000, 413),
     ],
 )
@@ -116,7 +118,18 @@ def test_csrf_origin(client: TestClient, settings: Settings, origin: str) -> Non
     )
 
 
-def test_upload_same_origin(client: TestClient, settings: Settings) -> None:
+@pytest.mark.parametrize(
+    "mime",
+    [
+        "application/yaml",
+        "application/x-yaml",
+        "text/yaml",
+        "text/x-yaml",
+        "text/plain",
+        "application/octet-stream",
+    ],
+)
+def test_upload_same_origin(client: TestClient, settings: Settings, mime: str) -> None:
     csrf = sign_in(client, str(settings.operator_ids[0]), str(settings.tenant_id))
     users = [user.key for user in client.app.state.users.users]
     content = json.dumps(
@@ -147,7 +160,7 @@ def test_upload_same_origin(client: TestClient, settings: Settings) -> None:
             "scenario": (
                 "demo.yaml",
                 content,
-                "text/yaml",
+                mime,
             )
         },
         headers={"Origin": settings.public_url},
@@ -155,6 +168,18 @@ def test_upload_same_origin(client: TestClient, settings: Settings) -> None:
     )
     assert response.status_code == 303
     assert response.headers["referrer-policy"] == "same-origin"
+
+
+def test_binary_mime_still_validates_yaml(client: TestClient, settings: Settings) -> None:
+    csrf = sign_in(client, str(settings.operator_ids[0]), str(settings.tenant_id))
+    response = client.post(
+        "/upload",
+        data={"csrf": csrf},
+        files={"scenario": ("demo.yaml", b"\x00\xff", "application/octet-stream")},
+        headers={"Origin": settings.public_url},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid or excessively nested YAML"
 
 
 def test_secret_redaction() -> None:

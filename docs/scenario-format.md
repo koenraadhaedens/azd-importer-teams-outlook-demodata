@@ -2,7 +2,10 @@
 
 Canonical format: one UTF-8 YAML document, `.yaml` or `.yml`, default 65536-byte
 maximum. Accepted MIME types are `application/yaml`, `application/x-yaml`,
-`text/yaml`, `text/x-yaml` and `text/plain`; generic binary/JSON MIME is rejected.
+`text/yaml`, `text/x-yaml`, `text/plain` and `application/octet-stream`.
+Browsers may label YAML as `application/octet-stream`; it is accepted only with
+a `.yaml`/`.yml` filename and must still pass UTF-8, YAML and scenario validation.
+JSON MIME types remain rejected.
 MIME/extension checks are only an early filter, not the security boundary.
 Aliases, anchors, explicit tags, duplicate keys, non-string mapping keys,
 non-JSON values and executable expressions are forbidden.

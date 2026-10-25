@@ -258,6 +258,7 @@ def create_app(
             "text/yaml",
             "text/x-yaml",
             "text/plain",
+            "application/octet-stream",
         }:
             raise HTTPException(400, "Unsupported MIME type; upload a YAML text document")
         try:

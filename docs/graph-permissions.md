@@ -20,6 +20,9 @@ is needed. Team/channel IDs are configured, not broadly discovered.
 `User.Read.All` requires administrator consent. The list-users **application**
 permission table does not specify delegated `User.ReadBasic.All` as a supported
 application alternative; do not confuse the two permission types.
+Postprovision explicitly creates this app-role assignment for the verified ACI
+identity using the already-authorized deployment identity. It does not prompt
+for consent or elevate itself; missing setup privileges fail provisioning.
 
 `ChannelMessage.Send` is not intrinsically admin-consent-only according to its
 permission definition, but tenant consent policy can block user consent.
@@ -59,14 +62,19 @@ grants. Microsoft describes Application RBAC as the replacement.
 
 - Noninteractive registration hook: pre-authorized deployment identity with
   Graph application `Application.ReadWrite.All` for dedicated app/SP/FIC
-  creation and updates. Azure resource Owner alone does not authorize Graph.
-  The hook does not grant consent or assign users/groups.
+  creation and updates, plus `AppRoleAssignment.ReadWrite.All` for the automatic
+  runtime `User.Read.All` grant. Application.ReadWrite.All covers the required
+  application-read permission. Azure resource Owner alone does not authorize
+  Graph. The hook grants no delegated Teams consent, mail permission or
+  user/group assignment.
 - Separate administrator helper: delegated `Application.Read.All` and
   `AppRoleAssignment.ReadWrite.All` for enterprise-app assignments.
 - Administrator-only explicit delegated consent switch:
   `DelegatedPermissionGrant.ReadWrite.All`.
-- Runtime Graph-role assignment: delegated `Application.Read.All` and
-  `AppRoleAssignment.ReadWrite.All`, under an appropriately privileged admin.
+- Signed-in CLI administrator for runtime Graph-role assignment: effective
+  `Application.Read.All` and `AppRoleAssignment.ReadWrite.All` (or supported
+  higher privileges), with an appropriate Entra role for Microsoft Graph
+  application-role grants, such as Privileged Role Administrator.
 - Exchange setup: Exchange Administrator with appropriate Organization Management
   / Application RBAC delegating rights.
 
@@ -85,5 +93,6 @@ runtime Graph permissions remain on the managed identity itself.
 - [Send channel message](https://learn.microsoft.com/en-us/graph/api/channel-post-messages?view=graph-rest-1.0)
 - [Reply](https://learn.microsoft.com/en-us/graph/api/chatmessage-post-replies?view=graph-rest-1.0)
 - [Permission reference](https://learn.microsoft.com/en-us/graph/permissions-reference)
+- [Assign a service-principal app role](https://learn.microsoft.com/en-us/graph/api/serviceprincipal-post-approleassignments?view=graph-rest-1.0)
 - [Exchange Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
 - [ACI temporary emptyDir volumes](https://learn.microsoft.com/en-us/azure/container-instances/container-instances-volume-emptydir)

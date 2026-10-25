@@ -4,6 +4,13 @@ $global:registrationMock = @{
     principal = [guid]::NewGuid().ToString()
     identityId = "/subscriptions/$([guid]::NewGuid())/resourceGroups/demo/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-demo"
     scopeId = [guid]::NewGuid().ToString()
+    graphId = [guid]::NewGuid().ToString()
+    userReadRoleId = [guid]::NewGuid().ToString()
+    mailRoleId = [guid]::NewGuid().ToString()
+    grants = [System.Collections.Generic.List[object]]::new()
+    grantPosts = 0
+    denyGrant = $false
+    paginateGrants = $false
     saved = @{}
     requests = [System.Collections.Generic.List[object]]::new()
     app = $null
@@ -50,6 +57,7 @@ function global:az {
     }
     if ($args[0] -eq "container" -and $args[1] -eq "show") { return $state.fqdn }
     if ($args[0] -eq "deployment") {
+        Assert (@($state.grants | Where-Object appRoleId -eq $state.userReadRoleId).Count -eq 1) "Assign User.Read.All before any ACI initialization/deployment"
         $file = $args[[array]::IndexOf($args, "--parameters") + 1].Substring(1)
         $state.deployments.Add((Get-Content -Raw $file | ConvertFrom-Json).parameters)
         $state.containerExists = $true
@@ -67,9 +75,27 @@ function global:az {
     }
     $state.requests.Add(@{ method = $method; path = $path; body = $body })
     if ($path -match "^servicePrincipals\?.*00000003-0000-0000-c000-000000000000") {
-        return @{ value = @(@{ id = [guid]::NewGuid().ToString(); oauth2PermissionScopes = @(
+        return @{ value = @(@{ id = $state.graphId; oauth2PermissionScopes = @(
             @{ id = $state.scopeId; value = "ChannelMessage.Send"; isEnabled = $true }
+        ); appRoles = @(
+            @{ id = $state.userReadRoleId; value = "User.Read.All"; isEnabled = $true; allowedMemberTypes = @("Application") }
+            @{ id = $state.mailRoleId; value = "Mail.Send"; isEnabled = $true; allowedMemberTypes = @("Application") }
         ) }) } | ConvertTo-Json -Depth 8 -Compress
+    }
+    if ($path -match "^servicePrincipals/$($state.principal)/appRoleAssignments(?:\?|$)") {
+        if ($method -eq "GET") {
+            if ($state.paginateGrants -and $path -notmatch "skiptoken") {
+                return @{ value = @(); "@odata.nextLink" = "https://graph.microsoft.com/v1.0/servicePrincipals/$($state.principal)/appRoleAssignments?`$skiptoken=next" } | ConvertTo-Json -Compress
+            }
+            return @{ value = @($state.grants.ToArray()) } | ConvertTo-Json -Depth 8 -Compress
+        }
+        Assert ($method -eq "POST") "Only read/create runtime app-role assignments"
+        Assert ($body.principalId -eq $state.principal -and $body.resourceId -eq $state.graphId -and
+            $body.appRoleId -eq $state.userReadRoleId) "Only grant Graph User.Read.All to the provisioned runtime principal"
+        if ($state.denyGrant) { $global:LASTEXITCODE = 1; return }
+        $state.grantPosts++
+        $state.grants.Add($body)
+        return $body | ConvertTo-Json -Compress
     }
     if ($path -match "^applications\?") {
         return @{ value = @(if ($state.app) { $state.app }) } | ConvertTo-Json -Depth 12 -Compress
@@ -200,7 +226,20 @@ try {
         Assert ($state.requests.Count -eq $requestsBefore) "Invalid tenant context must not mutate Entra"
     }
     $env:AZURE_TENANT_ID = $state.tenant
+    $state.denyGrant = $true
+    $failure = $null
+    try { & $initialize } catch { $failure = $_.Exception.Message }
+    Assert ($failure -and $failure.Contains("appRoleAssignments")) "Role-assignment denial must explicitly fail postprovision"
+    Assert ($state.deployments.Count -eq 0 -and $state.grantPosts -eq 0) "Do not initialize ACI when the required role cannot be granted"
+    $state.denyGrant = $false
+    $state.grants.Add(@{ resourceId = $state.graphId; appRoleId = $state.mailRoleId })
+    $failure = $null
+    try { & $initialize } catch { $failure = $_.Exception.Message }
+    Assert ($failure -and $failure.Contains("Unscoped Entra Mail.Send")) "Reject additive unscoped mail permissions"
+    Assert ($state.grantPosts -eq 0 -and $state.deployments.Count -eq 0) "Do not modify permissions/deploy after mail-scope violation"
+    $state.grants.Clear()
     & $initialize
+    Assert ($state.grantPosts -eq 1) "Automatically grant User.Read.All once"
     Assert ($state.deployments.Count -eq 1) "First initialization should create exactly one bootstrap"
     $bootstrap = $state.deployments[0]
     Assert $bootstrap.bootstrap.value "First deployment must use initialization mode"
@@ -217,7 +256,9 @@ try {
         $_.method -eq "PATCH" -and $_.path -eq "applications/$($state.app.id)"
     })[-1]
     Assert ($patch.body.web.redirectUris[0] -eq "https://$($state.fqdn)/auth/callback") "Entra must use the discovered FQDN"
+    $state.paginateGrants = $true
     & $initialize
+    Assert ($state.grantPosts -eq 1) "Find existing role assignments on later pages without duplicating grants"
     Assert ($state.deployments.Count -eq 1) "Rerun must not reset an existing group to bootstrap"
     $env:OPERATOR_IDS = ConvertTo-Json -InputObject @($values.OPERATOR_IDS, [guid]::NewGuid().ToString()) -Compress
     $env:USE_MANAGED_IDENTITY_FOR_IMAGE_PULL = "true"
@@ -243,7 +284,8 @@ try {
     $failed = $false
     try { & $deploy } catch { $failed = $true }
     Assert $failed "HTTP 200 without ready status must not be accepted as successful deployment"
-    Write-Host "PASS: tenant diagnostics, registration/trust, safe bootstrap, actual FQDN, reruns, final deployment, drift/partial-registration rejection and strict HTTPS readiness."
+    Assert (-not ($state.requests | Where-Object { $_.path -match "oauth2PermissionGrants|appRoleAssignedTo|addPassword" })) "Do not consent Teams, assign users or mint secrets"
+    Write-Host "PASS: automatic User.Read.All before initialization, paginated idempotency, denied grants/mail-scope rejection, tenant checks, registration/trust, bootstrap and strict HTTPS readiness."
 } finally {
     $env:WEB_CLIENT_ID = $oldId
     foreach ($name in $environment.Keys) {

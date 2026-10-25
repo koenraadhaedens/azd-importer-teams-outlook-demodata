@@ -6,27 +6,8 @@ param(
 )
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
-
-function Invoke-Graph {
-    param([string]$Method, [string]$Path, [object]$Body)
-    $file = $null
-    try {
-        $arguments = @("rest", "--method", $Method, "--url", "https://graph.microsoft.com/v1.0/$Path",
-            "--only-show-errors", "--output", "json")
-        if ($null -ne $Body) {
-            $file = Join-Path ([IO.Path]::GetTempPath()) ("entra-" + [guid]::NewGuid() + ".json")
-            $Body | ConvertTo-Json -Depth 12 | Set-Content -Encoding utf8 $file
-            $arguments += @("--headers", "Content-Type=application/json", "--body", "@$file")
-        }
-        $result = & az @arguments
-        if ($LASTEXITCODE -ne 0) {
-            throw "Graph $Method $Path failed. Authorize the deployment identity for application registration; no interactive login or consent fallback is attempted."
-        }
-        if ($result) { return ($result -join "`n") | ConvertFrom-Json }
-    } finally {
-        if ($file) { Remove-Item -LiteralPath $file -Force }
-    }
-}
+. (Join-Path $PSScriptRoot "aci-deployment.ps1")
+. (Join-Path $PSScriptRoot "entra-graph.ps1")
 
 function Save-AzdValue {
     param([string]$Name, [string]$Value)
@@ -37,21 +18,7 @@ function Save-AzdValue {
 if ($PublicHostname -notmatch '^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$') {
     throw "A valid discovered ACI hostname is required; run the azd endpoint initialization hook."
 }
-$null = [guid]::Parse($TenantId)
-$null = [guid]::Parse($IdentityPrincipalId)
-if ($IdentityResourceId -notmatch '^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft.ManagedIdentity/userAssignedIdentities/[^/]+$') {
-    throw "Expected the provisioned user-assigned identity resource ID."
-}
-$accountTenant = & az account show --query tenantId --output tsv --only-show-errors
-if ($LASTEXITCODE -ne 0 -or ([string]$accountTenant).Trim() -ne $TenantId) {
-    throw "Azure CLI must already be authenticated in AZURE_TENANT_ID. Registration will not prompt for login."
-}
-$identity = & az identity show --ids $IdentityResourceId --output json --only-show-errors
-if ($LASTEXITCODE -ne 0) { throw "Cannot verify the provisioned user-assigned identity." }
-$identity = ($identity -join "`n") | ConvertFrom-Json
-if ($identity.tenantId -ne $TenantId -or $identity.principalId -ne $IdentityPrincipalId) {
-    throw "Managed identity and application must belong to the configured tenant."
-}
+Assert-AciManagedIdentity -TenantId $TenantId -PrincipalObjectId $IdentityPrincipalId -IdentityResourceId $IdentityResourceId
 
 # A unique resource-derived name scopes discovery without relying on user-supplied display names.
 $displayName = "azd-m365-demo-loader-$($IdentityResourceId.Split('/')[-1])-web"

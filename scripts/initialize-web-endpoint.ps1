@@ -14,6 +14,7 @@ $tenant = Invoke-Azure @("account", "show", "--query", "tenantId", "--output", "
 if (([string]$tenant).Trim() -ne $expectedTenant.ToString()) {
     throw "Azure CLI tenant '$(([string]$tenant).Trim())' does not match provisioned AZURE_TENANT_ID '$expectedTenant'. Authenticate Azure CLI in the target tenant/subscription before ACI initialization."
 }
+& (Join-Path $PSScriptRoot "grant-graph-identity.ps1") -PrincipalObjectId $env:AZURE_IDENTITY_PRINCIPAL_ID
 $container = Get-AciContainer
 if ($null -eq $container -or -not $container.ipAddress.fqdn) {
     Write-Host "Creating ACI in initialization mode to obtain its actual Azure DNS hostname."
@@ -27,4 +28,4 @@ foreach ($name in @("PUBLIC_HOSTNAME", "PUBLIC_URL")) {
     if ($LASTEXITCODE -ne 0) { throw "Could not save the discovered $name in azd." }
 }
 & (Join-Path $PSScriptRoot "register-web-app.ps1") -PublicHostname $env:PUBLIC_HOSTNAME
-Write-Host "Discovered endpoint: $($env:PUBLIC_URL). Run azd deploy after administrator consent/assignments and runtime grants."
+Write-Host "Discovered endpoint: $($env:PUBLIC_URL). Runtime User.Read.All is assigned. Run azd deploy after delegated consent/assignments and Exchange scope setup."

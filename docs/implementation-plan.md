@@ -13,8 +13,9 @@ name is retained; no remote or history is rewritten.
    app client assertion, not a local/Key Vault client secret. The noninteractive
    azd postprovision hook initializes a dormant ACI group, retrieves its actual
    FQDN and registers matching URLs/app/trust. Final deployment enables the app
-   and Caddy ACME; no up-front hostname/custom DNS. Consent and assignments
-   remain administrator-controlled.
+   and Caddy ACME; no up-front hostname/custom DNS. Postprovision also verifies
+   and assigns runtime User.Read.All using the preauthorized deployer. Delegated
+   Teams consent, user/group assignments and Exchange scope remain administrator-controlled.
 4. Implement Graph adapters and an atomic execution journal: assisted Teams,
    app-only mail, cancellation, dependencies, bounded timing, safe retries,
    duplicate protection, dry-run and redacted reports.

@@ -10,6 +10,24 @@ function Invoke-Azure {
     return $result
 }
 
+function Assert-AciManagedIdentity {
+    param([string]$TenantId, [string]$PrincipalObjectId, [string]$IdentityResourceId)
+    $null = [guid]::Parse($TenantId)
+    $null = [guid]::Parse($PrincipalObjectId)
+    if ($IdentityResourceId -notmatch '^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft.ManagedIdentity/userAssignedIdentities/[^/]+$') {
+        throw "Expected the provisioned user-assigned identity resource ID."
+    }
+    $tenant = Invoke-Azure @("account", "show", "--query", "tenantId", "--output", "tsv", "--only-show-errors")
+    if (([string]$tenant).Trim() -ne $TenantId) {
+        throw "Azure CLI must already be authenticated in AZURE_TENANT_ID. Entra setup will not prompt for login."
+    }
+    $identity = Invoke-Azure @("identity", "show", "--ids", $IdentityResourceId, "--output", "json", "--only-show-errors")
+    $identity = ($identity -join "`n") | ConvertFrom-Json
+    if ($identity.tenantId -ne $TenantId -or $identity.principalId -ne $PrincipalObjectId) {
+        throw "Managed identity and application must belong to the configured tenant and principal."
+    }
+}
+
 function Get-AciContainer {
     $groups = Invoke-Azure @("container", "list", "--resource-group", $env:AZURE_RESOURCE_GROUP,
         "--output", "json", "--only-show-errors")

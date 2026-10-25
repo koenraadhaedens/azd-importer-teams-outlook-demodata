@@ -27,8 +27,12 @@ granting the runtime access.
 The azd noninteractive postprovision hook registers the app, URLs and federation
 using a **separate pre-authorized deployment identity**. It requests but does not
 consent to ChannelMessage.Send, creates an assignment-required enterprise app,
-and saves WEB_CLIENT_ID. Administrator consent/user assignments remain explicit
-manual steps. Runtime receives no app-registration administration privileges.
+and saves WEB_CLIENT_ID. The hook also verifies the provisioned runtime identity
+and assigns Graph application `User.Read.All` before ACI initialization, reusing
+existing grants. This uses the deployer's preauthorized app-role-assignment
+permission, not an interactive Graph PowerShell login. Delegated Teams consent,
+user assignments and Exchange scope remain explicit administrator steps.
+Runtime receives no app-registration or app-role-assignment administration privileges.
 
 Prefer Exchange Online **Application RBAC**, assigning `Application Mail.Send`
 only for a scope containing the five mailboxes. Do not additionally grant the

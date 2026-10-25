@@ -65,7 +65,7 @@ subject to certificate-authority rate limits. For enterprise ingress options see
 |---|---|---|
 | Interactive web app | delegated `ChannelMessage.Send` | Normal Teams channel posts/replies as signed-in user. Permission is not intrinsically admin-consent-only, but this deployment uses explicit tenant-admin consent. |
 | Interactive web app | OIDC `openid`, `profile` | MSAL sign-in and identity claims; no mailbox read. |
-| Runtime managed identity | application `User.Read.All` | Resolve the five configured UPNs at startup using `/users` with only `id,userPrincipalName` selected; **admin consent required**. |
+| Runtime managed identity | application `User.Read.All` | Resolve the five configured UPNs at startup using `/users` with only `id,userPrincipalName` selected; automatically assigned by the preauthorized deployment identity in postprovision. |
 | Runtime managed identity | Exchange RBAC `Application Mail.Send` | `/users/{id}/sendMail`, scoped to five mailboxes by Exchange admin. **Not an additional unscoped Entra Mail.Send grant.** |
 
 Mail.Send supports unattended sending. The preferred authorization is Exchange
@@ -89,9 +89,11 @@ managed identity does not replace delegated Teams authorship.
 
 The noninteractive azd postprovision hook creates/updates the web registration,
 first discovers the ACI FQDN, derives redirect/logout URLs from it, configures managed-identity
-trust, and saves WEB_CLIENT_ID automatically. The deployment identity must
-already have Entra application-management authorization. **Consent and
-enterprise-app assignments remain administrator steps**, not automatic grants.
+trust, and saves WEB_CLIENT_ID automatically. Before ACI initialization, it also
+assigns Graph application `User.Read.All` to the verified runtime identity if
+missing. The deployment identity must already have Entra application-management
+and app-role-assignment authorization. **Delegated Teams consent and enterprise-app
+assignments remain administrator steps**, as does Exchange mailbox scope setup.
 See [Entra setup](docs/entra-setup.md) for bootstrap and migration details.
 
 Replace example UPNs in [config/demo-users.yaml](config/demo-users.yaml); exactly
@@ -191,8 +193,9 @@ and a new azd environment. No settings from another deployment are required.
   and manually publish both images as described in
   [Docker and Caddy HTTPS](#docker-and-caddy-https). Cloud Shell deployment needs
   neither a Python environment nor Docker; building images happens separately.
-- Have an administrator available to grant Graph/Exchange permissions,
-  delegated consent and enterprise-app assignments. The default anonymous
+- Pre-authorize the deployer for the automatic runtime `User.Read.All` grant;
+  have an administrator available for Exchange scope, delegated Teams consent
+  and enterprise-app assignments. The default anonymous
   image pulls do not require an AcrPull assignment.
 
 #### 2. Clone and select the target subscription
@@ -255,6 +258,11 @@ azd provision
 The preprovision hook checks required settings and installs Bicep if missing.
 Provisioning creates the resource group, runtime managed identity, vault and
 Log Analytics, and exports their IDs. It does not create storage accounts.
+The postprovision hook verifies the runtime identity and assigns Graph application
+`User.Read.All` before initializing ACI. Existing assignments are reused.
+Failure to authorize that grant stops provisioning; it is not deferred to an
+application startup crash. Graph permission/token-cache propagation can still
+delay readiness.
 
 Both configured image tags must be available anonymously and reachable from ACI.
 No registry credentials or cross-tenant identity trust are needed. The
@@ -266,8 +274,9 @@ remains dormant and Caddy returns HTTP 503 until final deployment.
 
 #### 5. Complete administrator permissions
 
-1. Grant the runtime managed identity Graph `User.Read.All` using
-   [grant-graph-identity.ps1](scripts/grant-graph-identity.ps1).
+1. Confirm postprovision reported runtime Graph `User.Read.All` assigned or
+   already assigned. [grant-graph-identity.ps1](scripts/grant-graph-identity.ps1)
+   runs automatically; no separate Graph PowerShell login is required.
 2. Configure the five-mailbox scope using
    [setup-exchange.ps1](scripts/setup-exchange.ps1). Verify all five allowed
    mailboxes and a sixth forbidden mailbox.
@@ -321,8 +330,9 @@ manual dispatch, `azure/login` and `azd auth login` with GitHub federation.
 Use `azd pipeline config` to bootstrap the federated identity/environment, then
 configure the variables listed in the workflow. No Azure client secret is used.
 The deployment identity needs deployment/supporting-resource role-assignment
-rights **and pre-authorized Graph application management** for the registration
-hook. It does not need ACR push rights, runtime mail permissions or web credentials.
+rights **and pre-authorized Graph application management and app-role assignment**
+for registration and the runtime User.Read.All grant. It does not need ACR push
+rights, runtime mail permissions or web credentials.
 The runtime managed identity has no application-management privileges. Default
 anonymous image pulls need no registry role assignment. Complete consent/
 assignments and Graph/Exchange bootstrap, and manually publish both images

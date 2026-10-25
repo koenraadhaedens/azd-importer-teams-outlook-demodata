@@ -217,3 +217,29 @@ stop preprovision.
 
 This verifies anonymous manifest accessibility and deployment configuration, not
 a live ACI image pull or completed Azure deployment.
+
+## Automatic runtime Graph permission follow-up
+
+Postprovision now verifies the provisioned ACI identity and assigns Graph
+application User.Read.All before initialization/deployment. The helper uses the
+existing Azure CLI session and a shared Graph REST wrapper; no Graph PowerShell
+module, Connect-MgGraph, device-code prompt or self-elevation is used. The deployer
+must already have authorization for Graph app-role assignments. Delegated Teams
+consent, enterprise user/group assignments and Exchange scope remain separate.
+
+Local validation:
+
+- Linux PowerShell integration tests verified the exact runtime principal,
+  Microsoft Graph resource principal and User.Read.All application-role ID.
+- The grant occurs before the first ACI deployment. Reruns find existing grants,
+  including on later assignment pages, without creating duplicates.
+- Denied assignment permissions fail postprovision before ACI initialization.
+  Mismatched tenants/identities and unsafe unscoped Entra Mail.Send are rejected.
+- No delegated consent, user/group assignment, mail permission or secret is
+  created by the hook.
+- All 19 prerequisite scenarios, registration/deployment integration tests,
+  PowerShell syntax, editor diagnostics and repository checks passed.
+
+No live Graph permission assignment was executed by these tests. Permission and
+managed-identity token-cache propagation can still delay runtime Graph access;
+the application continues to fail closed on a 403 rather than bypass authorization.

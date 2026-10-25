@@ -20,26 +20,30 @@ provide a web redirect URI or delegated user sign-in.
 **noninteractive postprovision hook**, after the supporting resources exist.
 There is **no manual PUBLIC_HOSTNAME or custom DNS prerequisite**. The hook:
 
-1. Creates the ACI group in initialization mode if it does not already exist:
+1. Verifies the provisioned runtime identity/tenant and automatically assigns
+   Microsoft Graph application `User.Read.All` using the deployment identity's
+   existing Azure CLI session. It checks all assignment pages and reuses an
+   existing grant. Authorization failure stops postprovision before ACI startup.
+2. Creates the ACI group in initialization mode if it does not already exist:
    the app is dormant, delivery is disabled, and Caddy returns HTTP 503 without
    requesting a certificate. Both manually published images must be anonymously
    pullable by default. Existing groups are not reset on reruns.
-2. Retrieves **ipAddress.fqdn** from Azure (never guesses from the DNS label),
+3. Retrieves **ipAddress.fqdn** from Azure (never guesses from the DNS label),
    saves PUBLIC_HOSTNAME/PUBLIC_URL, then invokes
    [register-web-app.ps1](../scripts/register-web-app.ps1). That script checks the
    CLI/managed-identity tenant and creates/updates a dedicated web registration.
-3. Derives URLs from the retrieved `https://<ACI-FQDN>`:
+4. Derives URLs from the retrieved `https://<ACI-FQDN>`:
    - redirect: `/auth/callback`
    - home/post-logout return: `/`
    - front-channel logout: `/auth/signed-out`
-4. Requests delegated `ChannelMessage.Send` in the registration manifest.
+5. Requests delegated `ChannelMessage.Send` in the registration manifest.
    **Requesting a permission does not grant consent.**
-5. Creates/updates a federated identity credential:
+6. Creates/updates a federated identity credential:
    - issuer: `https://login.microsoftonline.com/<tenant-id>/v2.0`
    - subject: managed identity **principal/object ID**, not client ID
    - audience: `api://AzureADTokenExchange`
-6. Creates the enterprise service principal with assignment required.
-7. Persists WEB_CLIENT_ID, WEB_APPLICATION_OBJECT_ID and
+7. Creates the enterprise service principal with assignment required.
+8. Persists WEB_CLIENT_ID, WEB_APPLICATION_OBJECT_ID and
    WEB_SERVICE_PRINCIPAL_ID with `azd env set`. Only after successful registration
    does it save WEB_REGISTERED_HOSTNAME. The deploy hook explicitly reads
    the saved client ID/hostname, including within the same `azd up`. It applies
@@ -49,9 +53,10 @@ There is **no manual PUBLIC_HOSTNAME or custom DNS prerequisite**. The hook:
    final app. Caddy obtains
    and renews the public certificate automatically via ACME.
 
-It creates **no client secret or certificate**, grants **no administrator
-consent**, and makes **no user/group assignments**. Those boundaries are
-intentional. Reruns reuse the saved client ID or uniquely named application and
+It creates **no client secret or certificate**, grants **no delegated Teams
+consent or mail permission**, and makes **no user/group assignments**. The one
+automatic runtime permission grant is `User.Read.All`; setup privileges are
+never granted to the runtime identity. Reruns reuse the saved client ID or uniquely named application and
 update URLs/trust without duplicate registrations. Run provisioning serially;
 the Graph create API is not a distributed uniqueness transaction.
 
@@ -65,13 +70,19 @@ grant Entra application-management rights.
 For unattended OIDC CI, an administrator must pre-authorize the **separate
 deployment identity** for the Graph application-management operations. The
 straightforward supported setup uses application `Application.ReadWrite.All`
-with admin consent. This is powerful: restrict it to the protected deployment
+for registration plus `AppRoleAssignment.ReadWrite.All` for the runtime Graph
+role grant, with administrator consent. The former covers the application-read
+permission needed for role discovery. These are powerful: restrict them to the protected deployment
 environment and consider a tenant-admin-designed owned-app/custom-role setup if
 you need tighter provisioning scope. That alternative must cover application
-discovery, app/SP creation and updates, scope lookup and FIC management.
+discovery, app/SP creation and updates, scope lookup, FIC management and the
+runtime app-role assignment.
 
 For a signed-in administrator's CLI, the authenticated account and CLI Graph
-authorization must permit these operations under tenant policy. If permission
+authorization must permit these operations under tenant policy. Granting Microsoft
+Graph application roles also requires an appropriate Entra role, such as an
+active Privileged Role Administrator role. Azure subscription Owner is not
+equivalent. If permission
 is missing the hook fails; it does not request interactive elevation.
 **Never grant these setup privileges to the ACI runtime identity.**
 
@@ -94,9 +105,9 @@ Now an administrator must:
    groups, to the enterprise app. Keep assignment required = Yes.
 3. Configure OPERATOR_IDS or AUTHORIZED_GROUP_ID separately for application
    operator privileges; enterprise assignment is not an operator grant.
-4. Grant the runtime identity direct application `User.Read.All` and configure
-   the five-mailbox Exchange `Application Mail.Send` scope. Federation does not
-   grant these permissions automatically.
+4. Verify postprovision reported runtime `User.Read.All` assigned/already
+   assigned, then configure the five-mailbox Exchange `Application Mail.Send`
+   scope separately. Federation alone does not grant Graph or mail permissions.
 5. For default anonymous images, no registry grant is required. Only when opting
    into private same-tenant ACR authentication, grant registry pull access as
    described in README before initialization can pull those images.
@@ -110,6 +121,12 @@ pwsh .\scripts\setup-entra.ps1 `
     "<demo3-object-id>", "<demo4-object-id>", "<demo5-object-id>") `
   -GrantConsent
 ```
+
+The runtime role helper `grant-graph-identity.ps1` is different: it runs inside
+postprovision through `az rest`, without Microsoft Graph PowerShell modules or
+an interactive `Connect-MgGraph`. It refuses a mismatched tenant/identity and
+detects unsafe unscoped Entra Mail.Send. Permission/token-cache propagation may
+delay app readiness after a new assignment; the hook does not bypass a 403.
 
 It uses Microsoft.Graph.Applications and Microsoft.Graph.Identity.SignIns.
 Its sign-in is intentionally interactive/administrator-controlled. The

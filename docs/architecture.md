@@ -17,7 +17,9 @@ Caddy proxies to `127.0.0.1:8000`. Compose uses `app:8000`, with **no app ports*
 The server ignores forwarded headers; templates use relative assets and OAuth
 URLs use the explicitly configured HTTPS origin, avoiding spoofing/mixed content.
 
-The postprovision hook first creates the group with a dormant app and HTTP-only
+The postprovision hook first verifies the runtime identity and assigns/reuses
+its Graph application User.Read.All role using the preauthorized deployer.
+It then creates the group with a dormant app and HTTP-only
 Caddy 503 using the same configured images, identity, volumes and port layout.
 It reads the actual Azure FQDN and registers matching Entra URLs, persisting the
 host/client ID in azd. Final deployment enables the app and Caddy ACME for that
@@ -64,8 +66,9 @@ Startup uses ACI's user-assigned managed identity and resolves five UPNs with
 Graph. Failure prevents readiness. The web app uses a managed-identity token for
 AzureADTokenExchange as its federated MSAL client assertion; there is no stored
 web credential or Key Vault read. A pre-authorized deployment identity creates
-the registration/URLs/trust in the azd postprovision hook; administrator consent
-and enterprise assignments remain separate. Operator upload stores a normalized scenario
+the registration/URLs/trust and grants runtime User.Read.All in postprovision;
+delegated Teams consent, Exchange scope and enterprise assignments remain
+separate. Operator upload stores a normalized scenario
 and SHA-256 fingerprint. Each step has its own idempotency key.
 
 Before Graph writes, the journal persists running state using fsync plus atomic

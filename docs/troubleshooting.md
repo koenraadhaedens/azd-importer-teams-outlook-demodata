@@ -3,6 +3,7 @@
 | Symptom | Investigation / fix |
 |---|---|
 | Cloud Shell preprovision reports Bicep CLI not found | The current hook installs missing Bicep with az bicep install. On an older checkout, run that command manually and retry azd provision. Installation needs download access and a writable Azure CLI configuration directory. A failed install or verification stops provisioning explicitly; check bicep.use_binary_from_path if an installed binary is not found. |
+| Postprovision tenant check fails | Provisioning exports AZURE_TENANT_ID from the selected subscription. Older checkouts may leave it empty and report a misleading authentication error. Compare azd env get-value AZURE_TENANT_ID with az account show --subscription <selected-subscription-id> --query tenantId -o tsv. After verifying this is the isolated CDX tenant, save a missing value with azd env set AZURE_TENANT_ID <verified-tenant-id> and rerun azd provision. For an actual mismatch, correct the selected subscription/login; do not bypass the tenant check. |
 | Startup refuses tenant/operator configuration | Fill tenant/web IDs; confirm isolated CDX explicitly; configure operator IDs or a direct security group. No auth bypass exists. |
 | User resolution 403 | Explicitly assign Graph application User.Read.All to the **runtime** principal; managed identity alone is insufficient. Allow consent propagation. |
 | A configured UPN is not found | Replace sample UPNs with real CDX users, verify tenant and license, check exact UPN rather than SMTP alias. |

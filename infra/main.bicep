@@ -26,6 +26,7 @@ module foundation 'modules/foundation.bicep' = {
 }
 
 output AZURE_RESOURCE_GROUP string = group.name
+output AZURE_TENANT_ID string = subscription().tenantId
 output AZURE_KEY_VAULT_NAME string = foundation.outputs.vaultName
 output AZURE_KEY_VAULT_ENDPOINT string = foundation.outputs.vaultUrl
 output AZURE_IDENTITY_RESOURCE_ID string = foundation.outputs.identityId

@@ -187,6 +187,20 @@ try {
     }
     $initialize = Join-Path (Join-Path $PSScriptRoot "..") "scripts/initialize-web-endpoint.ps1"
     $deploy = Join-Path (Join-Path $PSScriptRoot "..") "scripts/deploy.ps1"
+    foreach ($case in @(
+        @{ tenant = ""; error = "AZURE_TENANT_ID is missing" },
+        @{ tenant = "invalid"; error = "AZURE_TENANT_ID must be a valid tenant GUID" },
+        @{ tenant = [guid]::NewGuid().ToString(); error = "does not match provisioned AZURE_TENANT_ID" }
+    )) {
+        $env:AZURE_TENANT_ID = $case.tenant
+        $failure = $null
+        $requestsBefore = $state.requests.Count
+        try { & $initialize } catch { $failure = $_.Exception.Message }
+        Assert ($failure -and $failure.Contains($case.error)) "Missing, invalid and mismatched tenants must have distinct actionable errors"
+        Assert ($state.deployments.Count -eq 0) "Invalid tenant context must not deploy ACI"
+        Assert ($state.requests.Count -eq $requestsBefore) "Invalid tenant context must not mutate Entra"
+    }
+    $env:AZURE_TENANT_ID = $state.tenant
     & $initialize
     Assert ($state.deployments.Count -eq 1) "First initialization should create exactly one bootstrap"
     $bootstrap = $state.deployments[0]
@@ -222,7 +236,7 @@ try {
     $failed = $false
     try { & $deploy } catch { $failed = $true }
     Assert $failed "HTTP 200 without ready status must not be accepted as successful deployment"
-    Write-Host "PASS: registration/trust, safe bootstrap, actual FQDN, reruns, final deployment, drift/partial-registration rejection and strict HTTPS readiness."
+    Write-Host "PASS: tenant diagnostics, registration/trust, safe bootstrap, actual FQDN, reruns, final deployment, drift/partial-registration rejection and strict HTTPS readiness."
 } finally {
     $env:WEB_CLIENT_ID = $oldId
     foreach ($name in $environment.Keys) {

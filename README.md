@@ -174,7 +174,7 @@ azd env set AZURE_LOCATION westeurope
 azd env set DEMO_TENANT_CONFIRMED true
 azd env set ACME_EMAIL your-admin-mailbox@example.org
 azd env set OPERATOR_IDS '["<your-operator-object-id>"]'
-# Ensure AZURE_TENANT_ID targets the CDX tenant; azd prompts for subscription.
+# Select a subscription in the CDX tenant; provisioning exports AZURE_TENANT_ID.
 ```
 
 ### Azure portal Cloud Shell (PowerShell)

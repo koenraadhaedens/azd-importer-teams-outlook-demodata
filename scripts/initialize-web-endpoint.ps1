@@ -3,9 +3,16 @@ $ErrorActionPreference = "Stop"
 if (-not $env:AZURE_RESOURCE_GROUP -or -not $env:ACI_NAME) {
     throw "Provision supporting resources before initializing the ACI endpoint."
 }
+if (-not $env:AZURE_TENANT_ID) {
+    throw "AZURE_TENANT_ID is missing from the azd environment. Rerun azd provision with the current infrastructure template to export the selected subscription's tenant ID."
+}
+$expectedTenant = [guid]::Empty
+if (-not [guid]::TryParse($env:AZURE_TENANT_ID, [ref]$expectedTenant)) {
+    throw "AZURE_TENANT_ID must be a valid tenant GUID. Check the selected subscription and azd environment."
+}
 $tenant = Invoke-Azure @("account", "show", "--query", "tenantId", "--output", "tsv", "--only-show-errors")
-if (([string]$tenant).Trim() -ne $env:AZURE_TENANT_ID) {
-    throw "Azure CLI must already be authenticated in AZURE_TENANT_ID before ACI initialization."
+if (([string]$tenant).Trim() -ne $expectedTenant.ToString()) {
+    throw "Azure CLI tenant '$(([string]$tenant).Trim())' does not match provisioned AZURE_TENANT_ID '$expectedTenant'. Authenticate Azure CLI in the target tenant/subscription before ACI initialization."
 }
 $container = Get-AciContainer
 if ($null -eq $container -or -not $container.ipAddress.fqdn) {

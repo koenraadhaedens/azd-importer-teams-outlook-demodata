@@ -5,7 +5,7 @@ Tools and Azure CLI sign-in are assumed to be available.
 
 This is a **fresh installation** using your already-published app image.
 Copy **one snippet at a time**, wait for completion, and stop on errors.
-Keep the same shell open throughout.
+Keep the same shell open except when step 14 starts a clean Exchange session.
 
 Before starting:
 
@@ -168,9 +168,33 @@ find the application by `$webClientId`, grant admin consent under
 users under **Enterprise applications > Users and groups**.
 Keep **Assignment required = Yes**.
 
-## 14. Choose the forbidden-mailbox test account
+## 14. Start a clean PowerShell process for Exchange
 
-Enter an existing sixth mailbox that is **not** one of the five demo users.
+Graph and Exchange modules can load incompatible versions of shared assemblies.
+After Graph setup, start a separate process so Exchange does not reuse those
+assemblies. Removing a module does not unload its assemblies.
+
+```powershell
+pwsh -NoProfile
+```
+
+Wait for the new PowerShell prompt. It keeps the current directory, but not your
+PowerShell variables. Do not load Microsoft Graph modules in this new process.
+
+Reload the selected environment's runtime identity IDs and mailbox list:
+
+```powershell
+$ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
+$identityClientId = azd env get-value AZURE_IDENTITY_CLIENT_ID
+$identityPrincipalId = azd env get-value AZURE_IDENTITY_PRINCIPAL_ID
+$environmentName = azd env get-value AZURE_ENV_NAME
+$demoConfig = Get-Content -LiteralPath (Join-Path "config" "demo-users.json") -Raw |
+    ConvertFrom-Json
+$demoUpns = @($demoConfig.users | ForEach-Object { $_.userPrincipalName })
+```
+
+Enter an existing sixth mailbox that is **not** one of the five demo users:
 
 ```powershell
 $outOfScopeTestUpn = Read-Host "Sixth mailbox UPN for the out-of-scope test"
@@ -178,8 +202,9 @@ $outOfScopeTestUpn = Read-Host "Sixth mailbox UPN for the out-of-scope test"
 
 ## 15. Configure Exchange mailbox scope
 
-Complete sign-in as your CDX Exchange administrator. These parameters use the
-**runtime managed identity**, not the web application.
+Run in the clean process from step 14. Complete sign-in as your CDX Exchange
+administrator. These parameters use the **runtime managed identity**, not the
+web application.
 
 ```powershell
 & (Join-Path "scripts" "setup-exchange.ps1") `
@@ -199,6 +224,9 @@ broaden mailbox access.
 If Exchange sign-in is unavailable in Cloud Shell, run this helper from a
 PowerShell 7 administrator workstation with the same configuration and identity
 IDs, then return here after verifying scope.
+
+Continue with step 16 in this clean process; no return to the Graph session is
+needed.
 
 ## 16. Deploy with real delivery disabled
 

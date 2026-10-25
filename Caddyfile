@@ -1,0 +1,8 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+{$PUBLIC_HOSTNAME} {
+	reverse_proxy {$UPSTREAM:127.0.0.1:8000}
+}

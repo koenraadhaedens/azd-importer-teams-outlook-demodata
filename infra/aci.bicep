@@ -1,0 +1,136 @@
+targetScope = 'resourceGroup'
+
+param location string = resourceGroup().location
+param containerGroupName string
+param dnsLabel string
+param publicHostname string
+param acmeEmail string
+param image string = loadJsonContent('../config/container-images.json').services.app.image
+param caddyImage string = loadJsonContent('../config/container-images.json').services.caddy.image
+param identityResourceId string
+param identityClientId string
+param webClientId string
+param tenantId string = tenant().tenantId
+param vaultUrl string
+param journalBlobUrl string
+param operatorIds string
+param authorizedGroupId string = ''
+param deliveryEnabled bool = false
+param mailboxScopeConfirmed bool = false
+param allowExternalRecipients bool = false
+param logWorkspaceName string
+param certificateStorageName string
+
+var caddyConfig = loadTextContent('../Caddyfile')
+var registryServers = union([split(image, '/')[0]], [split(caddyImage, '/')[0]])
+
+resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
+  name: logWorkspaceName
+}
+resource certificates 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: certificateStorageName
+}
+resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
+  name: containerGroupName
+  location: location
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${identityResourceId}': {} }
+  }
+  properties: {
+    osType: 'Linux'
+    restartPolicy: 'Always'
+    diagnostics: {
+      logAnalytics: {
+        workspaceId: logs.properties.customerId
+        workspaceKey: logs.listKeys().primarySharedKey
+        logType: 'ContainerInsights'
+      }
+    }
+    imageRegistryCredentials: [
+      for server in registryServers: {
+        server: server
+        identity: identityResourceId
+      }
+    ]
+    ipAddress: {
+      type: 'Public'
+      dnsNameLabel: dnsLabel
+      ports: [
+        { port: 80, protocol: 'TCP' }
+        { port: 443, protocol: 'TCP' }
+      ]
+    }
+    containers: [
+      {
+        name: 'app'
+        properties: {
+          image: image
+          resources: { requests: { cpu: 1, memoryInGB: json('1.5') } }
+          environmentVariables: [
+            { name: 'TENANT_ID', value: tenantId }
+            { name: 'WEB_CLIENT_ID', value: webClientId }
+            { name: 'PUBLIC_URL', value: 'https://${publicHostname}' }
+            { name: 'OPERATOR_IDS', value: operatorIds }
+            { name: 'AUTHORIZED_GROUP_ID', value: authorizedGroupId }
+            { name: 'DEMO_TENANT_CONFIRMED', value: 'true' }
+            { name: 'DELIVERY_ENABLED', value: string(deliveryEnabled) }
+            { name: 'MAILBOX_SCOPE_CONFIRMED', value: string(mailboxScopeConfirmed) }
+            { name: 'ALLOW_EXTERNAL_RECIPIENTS', value: string(allowExternalRecipients) }
+            { name: 'MANAGED_IDENTITY_CLIENT_ID', value: identityClientId }
+            { name: 'KEY_VAULT_URL', value: vaultUrl }
+            { name: 'JOURNAL_BLOB_URL', value: journalBlobUrl }
+          ]
+          readinessProbe: {
+            exec: {
+              command: [
+                'python'
+                '-c'
+                'import urllib.request; r=urllib.request.Request("http://127.0.0.1:8000/healthz", headers={"Host":"${publicHostname}"}); urllib.request.urlopen(r,timeout=3)'
+              ]
+            }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            initialDelaySeconds: 90
+          }
+        }
+      }
+      {
+        name: 'https'
+        properties: {
+          image: caddyImage
+          command: ['caddy', 'run', '--config', '/etc/demo/Caddyfile', '--adapter', 'caddyfile']
+          environmentVariables: [
+            { name: 'PUBLIC_HOSTNAME', value: publicHostname }
+            { name: 'ACME_EMAIL', value: acmeEmail }
+            { name: 'UPSTREAM', value: '127.0.0.1:8000' }
+          ]
+          resources: { requests: { cpu: json('0.5'), memoryInGB: json('0.5') } }
+          ports: [
+            { port: 80, protocol: 'TCP' }
+            { port: 443, protocol: 'TCP' }
+          ]
+          volumeMounts: [
+            { name: 'caddy-config', mountPath: '/etc/demo', readOnly: true }
+            { name: 'caddy-data', mountPath: '/data' }
+          ]
+        }
+      }
+    ]
+    volumes: [
+      { name: 'caddy-config', secret: { Caddyfile: base64(caddyConfig) } }
+      {
+        name: 'caddy-data'
+        azureFile: {
+          shareName: 'caddy'
+          storageAccountName: certificates.name
+          storageAccountKey: certificates.listKeys().keys[0].value
+          readOnly: false
+        }
+      }
+    ]
+  }
+}
+
+output endpoint string = 'https://${publicHostname}'
+output fqdn string = group.properties.ipAddress.fqdn

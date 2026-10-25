@@ -1,0 +1,40 @@
+name: azd-m365-demo-loader
+services:
+  app:
+    extends:
+      file: config/container-images.json
+      service: app
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+    volumes:
+      - journal:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    restart: unless-stopped
+  caddy:
+    extends:
+      file: config/container-images.json
+      service: caddy
+    environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:?Set PUBLIC_HOSTNAME in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env}
+      UPSTREAM: app:8000
+    ports:
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+volumes:
+  journal:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,16 @@
+users:
+  - key: adele
+    displayName: Adele Vance
+    userPrincipalName: adelev@contoso.onmicrosoft.com
+  - key: alex
+    displayName: Alex Wilber
+    userPrincipalName: alexw@contoso.onmicrosoft.com
+  - key: christie
+    displayName: Christie Cline
+    userPrincipalName: christiec@contoso.onmicrosoft.com
+  - key: diego
+    displayName: Diego Siciliani
+    userPrincipalName: diegos@contoso.onmicrosoft.com
+  - key: megan
+    displayName: Megan Bowen
+    userPrincipalName: meganb@contoso.onmicrosoft.com

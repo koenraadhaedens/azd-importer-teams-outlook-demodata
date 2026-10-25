@@ -1,0 +1,13 @@
+# Deliberately invalid: unsupported schema version, operation and unknown user.
+schemaVersion: "99"
+scenarioId: invalid-demo
+title: Invalid example
+author: Demo operator
+createdAt: "2026-10-01T09:00:00Z"
+tenantAssumptions: [Demo only]
+requiredUsers: [unknown]
+activities:
+  - id: invalid
+    type: shell
+    user: unknown
+    body: This must never execute.

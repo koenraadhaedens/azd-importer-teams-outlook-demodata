@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Scenario workspace</h1>
+<p class="notice">Delivery is {{ 'enabled' if delivery else 'disabled by administrator' }}.
+All scenarios are previewed before execution. A scenario marked dryRun cannot send.</p>
+{% if operator %}
+<section aria-labelledby="upload-heading">
+  <h2 id="upload-heading">Upload YAML</h2>
+  <form action="/upload" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <label for="scenario">Scenario file (.yaml or .yml, maximum {{ maximum }} bytes)</label>
+    <input type="file" id="scenario" name="scenario" accept=".yaml,.yml" required>
+    <button type="submit">Validate and preview</button>
+  </form>
+</section>
+{% else %}
+<p>You can inspect scenarios and execute only Teams activities assigned to your demo identity.</p>
+{% endif %}
+<section>
+  <h2>Resolved demo identities</h2>
+  <div class="table-scroll"><table>
+    <caption>Exactly five configured user slots</caption>
+    <thead><tr><th>Key</th><th>Name</th><th>UPN</th><th>Resolved object ID</th></tr></thead>
+    <tbody>{% for user in users %}
+    <tr><td>{{ user.key }}</td><td>{{ user.displayName }}</td>
+      <td>{{ user.userPrincipalName }}</td><td><code>{{ resolved[user.key] }}</code></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</section>
+<section><h2>Runs</h2>
+  <ul>{% for run in runs %}
+    <li><a href="/runs/{{ run.id }}">{{ run.scenarioId }}</a>
+      {% if run.retired %}(retired){% elif run.cancelled %}(cancelled){% elif run.dryRun %}(dry run only){% endif %}</li>
+    {% else %}<li>No scenarios uploaded yet.</li>{% endfor %}
+  </ul>
+</section>
+{% endblock %}

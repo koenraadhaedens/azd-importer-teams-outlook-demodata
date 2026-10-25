@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ run.scenarioId }} - Demo loader{% endblock %}
+{% block content %}
+<h1>{{ run.scenario.title if run.scenario else run.scenarioId }}</h1>
+<p>Correlation ID: <code>{{ run.id }}</code></p>
+<p>{{ run.scenario.description if run.scenario else 'Content retired; idempotency record retained.' }}</p>
+<aside class="notice">
+  <h2>Permissions and author identity</h2>
+  <p>Application: User.Read.All for resolving configured users; Exchange Application
+  RBAC Mail.Send for five scoped mailboxes. Delegated: ChannelMessage.Send for Teams.
+  Sign-in: openid and profile. No mail read or Teams migration permissions.</p>
+  <p>Teams messages are authored by the currently signed-in assigned demo user.
+  Each distinct user must sign in separately. No chat or email-thread reply support.</p>
+</aside>
+<section aria-labelledby="controls">
+  <h2 id="controls">Run controls</h2>
+  <form method="post" action="/runs/{{ run.id }}/dry-run">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <button>Dry-run report (no writes)</button>
+  </form>
+  {% if operator and not run.retired and not run.cancelled %}
+  <form method="post" action="/runs/{{ run.id }}/execute" class="danger">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <p><strong>Warning: real email and Teams content cannot be undone here.</strong>
+    Review all recipients, bodies and tenant mappings. Repeated clicks do not replay completed steps.</p>
+    <label><input type="checkbox" name="confirm" value="send" required>
+      I have reviewed this isolated demo-tenant scenario and authorize real delivery.</label>
+    <button {% if run.dryRun %}disabled{% endif %}>Start / resume ready email steps</button>
+  </form>
+  {% endif %}
+  {% if demo_user and run.started and not run.cancelled and not run.retired %}
+  <form method="post" action="/runs/{{ run.id }}/teams">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <button>Execute my ready Teams activities as myself</button>
+  </form>
+  {% endif %}
+  <p>After a cross-user dependency completes, sign in as the next user and click again.
+    Operators resume email steps that were waiting for Teams. Delays start after dependencies finish
+    (or run start for roots). Cancellation affects only not-yet-started work.</p>
+  {% if operator %}
+  <form method="post" action="/runs/{{ run.id }}/cancel">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <button>Cancel future actions</button>
+  </form>
+  <form method="post" action="/runs/{{ run.id }}/retire">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <button>Retire stored scenario content</button>
+  </form>
+  {% endif %}
+  <p><a href="/runs/{{ run.id }}/report">Download redacted execution report</a></p>
+</section>
+<section>
+  <h2>Progress by demo user</h2>
+  <div class="table-scroll"><table>
+    <caption>Activity outcomes for each configured author</caption>
+    <thead><tr><th>User</th>{% for status in ['pending', 'running', 'success', 'failed', 'unknown', 'skipped', 'cancelled'] %}
+      <th>{{ status }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for user, counts in per_user.items() %}
+      <tr><th scope="row">{{ user }}</th>
+        {% for status in ['pending', 'running', 'success', 'failed', 'unknown', 'skipped', 'cancelled'] %}
+        <td data-user-count="{{ user }}" data-status="{{ status }}">{{ counts.get(status, 0) }}</td>
+        {% endfor %}
+      </tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+<section>
+  <h2>Per-step progress</h2>
+  <p id="progress" role="status" aria-live="polite" data-report="/runs/{{ run.id }}/report">
+    Status refreshes every 10 seconds while this page is open.</p>
+  <ul>{% for id, step in run.steps.items() %}
+    <li><code>{{ id }}</code> ({{ authors.get(id, 'retired') }}):
+      <strong data-step="{{ id }}" data-user="{{ authors.get(id, '') }}">{{ step.status }}</strong>
+      <span data-error="{{ id }}">{{ step.get('error', '') }}</span></li>
+  {% endfor %}</ul>
+</section>
+<section>
+  <h2>Planned Graph v1.0 operations</h2>
+  {% for action in operations %}
+  <details>
+    <summary>{{ loop.index }}. {{ action.id }} - {{ action.type }} as {{ action.user }}</summary>
+    <p><code>{{ action.method }} {{ action.endpoint }}</code></p>
+    <p>Delay: {{ action.delaySeconds }} seconds.
+    Dependencies: {{ action.dependsOn | join(', ') or 'none' }}</p>
+    {% if action.type == 'email' %}
+    <p>To: {{ action.to | join(', ') }}; Cc: {{ action.cc | join(', ') or 'none' }}</p>
+    <p>Subject: {{ action.subject }}; body format: {{ action.bodyType }}</p>
+    {% endif %}
+    <p>Body (escaped source, never rendered as uploaded HTML):</p>
+    <pre>{{ action.body }}</pre>
+  </details>
+  {% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,341 @@
+{
+  "$defs": {
+    "Email": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "user": {
+          "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+          "title": "User",
+          "type": "string"
+        },
+        "dependsOn": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Dependson",
+          "type": "array"
+        },
+        "delaySeconds": {
+          "default": 0,
+          "maximum": 3600,
+          "minimum": 0,
+          "title": "Delayseconds",
+          "type": "integer"
+        },
+        "body": {
+          "maxLength": 10000,
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        },
+        "type": {
+          "const": "email",
+          "title": "Type",
+          "type": "string"
+        },
+        "to": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "title": "To",
+          "type": "array"
+        },
+        "cc": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Cc",
+          "type": "array"
+        },
+        "subject": {
+          "maxLength": 250,
+          "minLength": 1,
+          "title": "Subject",
+          "type": "string"
+        },
+        "bodyType": {
+          "default": "text",
+          "enum": [
+            "text",
+            "html"
+          ],
+          "title": "Bodytype",
+          "type": "string"
+        },
+        "importance": {
+          "default": "normal",
+          "enum": [
+            "low",
+            "normal",
+            "high"
+          ],
+          "title": "Importance",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "user",
+        "body",
+        "type",
+        "to",
+        "subject"
+      ],
+      "title": "Email",
+      "type": "object"
+    },
+    "TeamsMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "user": {
+          "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+          "title": "User",
+          "type": "string"
+        },
+        "dependsOn": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Dependson",
+          "type": "array"
+        },
+        "delaySeconds": {
+          "default": 0,
+          "maximum": 3600,
+          "minimum": 0,
+          "title": "Delayseconds",
+          "type": "integer"
+        },
+        "body": {
+          "maxLength": 10000,
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        },
+        "type": {
+          "const": "teamsMessage",
+          "title": "Type",
+          "type": "string"
+        },
+        "channel": {
+          "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+          "title": "Channel",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "user",
+        "body",
+        "type",
+        "channel"
+      ],
+      "title": "TeamsMessage",
+      "type": "object"
+    },
+    "TeamsReply": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "user": {
+          "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+          "title": "User",
+          "type": "string"
+        },
+        "dependsOn": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Dependson",
+          "type": "array"
+        },
+        "delaySeconds": {
+          "default": 0,
+          "maximum": 3600,
+          "minimum": 0,
+          "title": "Delayseconds",
+          "type": "integer"
+        },
+        "body": {
+          "maxLength": 10000,
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        },
+        "type": {
+          "const": "teamsReply",
+          "title": "Type",
+          "type": "string"
+        },
+        "channel": {
+          "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+          "title": "Channel",
+          "type": "string"
+        },
+        "parent": {
+          "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+          "title": "Parent",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "user",
+        "body",
+        "type",
+        "channel",
+        "parent"
+      ],
+      "title": "TeamsReply",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "scenarioId": {
+      "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+      "title": "Scenarioid",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Description",
+      "type": "string"
+    },
+    "author": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Author",
+      "type": "string"
+    },
+    "createdAt": {
+      "format": "date-time",
+      "title": "Createdat",
+      "type": "string"
+    },
+    "tenantAssumptions": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20,
+      "minItems": 1,
+      "title": "Tenantassumptions",
+      "type": "array"
+    },
+    "requiredUsers": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+        "type": "string"
+      },
+      "maxItems": 5,
+      "minItems": 1,
+      "title": "Requiredusers",
+      "type": "array"
+    },
+    "requiredChannels": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_-]{0,39}$",
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Requiredchannels",
+      "type": "array"
+    },
+    "dryRun": {
+      "default": true,
+      "title": "Dryrun",
+      "type": "boolean"
+    },
+    "metadata": {
+      "additionalProperties": {
+        "maxLength": 200,
+        "type": "string"
+      },
+      "title": "Metadata",
+      "type": "object"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Tags",
+      "type": "array"
+    },
+    "activities": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "email": "#/$defs/Email",
+            "teamsMessage": "#/$defs/TeamsMessage",
+            "teamsReply": "#/$defs/TeamsReply"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/Email"
+          },
+          {
+            "$ref": "#/$defs/TeamsMessage"
+          },
+          {
+            "$ref": "#/$defs/TeamsReply"
+          }
+        ]
+      },
+      "maxItems": 200,
+      "minItems": 1,
+      "title": "Activities",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "scenarioId",
+    "title",
+    "author",
+    "createdAt",
+    "tenantAssumptions",
+    "requiredUsers",
+    "activities"
+  ],
+  "title": "Scenario",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

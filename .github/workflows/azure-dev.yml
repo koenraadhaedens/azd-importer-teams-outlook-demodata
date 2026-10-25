@@ -1,0 +1,42 @@
+name: Deploy demo environment
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: m365-demo-deployment
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: demo
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      PUBLIC_HOSTNAME: ${{ vars.PUBLIC_HOSTNAME }}
+      ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+      WEB_CLIENT_ID: ${{ vars.WEB_CLIENT_ID }}
+      OPERATOR_IDS: ${{ vars.OPERATOR_IDS }}
+      AUTHORIZED_GROUP_ID: ${{ vars.AUTHORIZED_GROUP_ID }}
+      DEMO_TENANT_CONFIRMED: "true"
+      DELIVERY_ENABLED: "false"
+      MAILBOX_SCOPE_CONFIRMED: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: Azure/setup-azd@v2
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Authenticate azd using GitHub OIDC
+        run: azd auth login --client-id "$AZURE_CLIENT_ID" --tenant-id "$AZURE_TENANT_ID" --federated-credential-provider github
+      - run: az bicep install
+      - run: azd env new "$AZURE_ENV_NAME" --no-prompt
+      - run: azd up --no-prompt

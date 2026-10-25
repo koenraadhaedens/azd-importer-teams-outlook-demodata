@@ -1,0 +1,45 @@
+schemaVersion: "1.0"
+scenarioId: launch-assisted-preview
+title: Northwind assisted launch conversation
+description: Each author signs in separately; configure the launch channel alias first.
+author: Demo operator
+createdAt: "2026-10-01T09:00:00Z"
+tenantAssumptions:
+  - All five users are licensed members of the mapped launch channel.
+requiredUsers: [adele, alex, christie, diego, megan]
+requiredChannels: [launch]
+dryRun: true
+activities:
+  - id: kickoff
+    type: email
+    user: adele
+    to: [alex, christie, diego, megan]
+    subject: Northwind launch planning
+    body: Please coordinate the fictional launch in our Teams launch channel.
+  - id: launch-post
+    type: teamsMessage
+    user: christie
+    channel: launch
+    body: The fictional launch checklist is ready. Diego, can you review the timeline?
+    dependsOn: [kickoff]
+  - id: timeline-reply
+    type: teamsReply
+    user: diego
+    channel: launch
+    parent: launch-post
+    dependsOn: [launch-post]
+    body: I reviewed the timeline. The demo milestones are consistent.
+  - id: summary-post
+    type: teamsMessage
+    user: alex
+    channel: launch
+    dependsOn: [timeline-reply]
+    body: Thanks Christie and Diego. The fictional launch is ready for review.
+  - id: wrapup
+    type: email
+    user: megan
+    to: [adele, alex, christie, diego]
+    dependsOn: [summary-post]
+    delaySeconds: 120
+    subject: Northwind demo review
+    body: Our fictional launch conversation is complete. Thank you, team.

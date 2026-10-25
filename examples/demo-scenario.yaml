@@ -1,0 +1,30 @@
+schemaVersion: "1.0"
+scenarioId: launch-email-preview
+title: Northwind launch readiness
+description: Fictional five-person launch coordination; safe dry-run example.
+author: Demo operator
+createdAt: "2026-10-01T09:00:00Z"
+tenantAssumptions:
+  - Isolated licensed CDX tenant with five configured mailboxes.
+requiredUsers: [adele, alex, christie, diego, megan]
+requiredChannels: []
+dryRun: true
+metadata:
+  purpose: fictional-demo
+tags: [launch, email]
+activities:
+  - id: kickoff
+    type: email
+    user: adele
+    to: [alex, christie]
+    cc: [diego, megan]
+    subject: Northwind launch readiness
+    body: "Hello {{user.alex.displayName}}, please review our fictional launch checklist."
+  - id: update
+    type: email
+    user: megan
+    to: [adele, alex, christie, diego]
+    subject: Northwind readiness update
+    body: All fictional checklist owners have been assigned. No customer data is included.
+    dependsOn: [kickoff]
+    delaySeconds: 120

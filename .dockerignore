@@ -1,0 +1,17 @@
+.git
+.azure
+.env
+.env.*
+!.env.example
+.venv
+data
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+config/*.local.yaml
+*.pem
+*.pfx
+*.key
+dist
+build

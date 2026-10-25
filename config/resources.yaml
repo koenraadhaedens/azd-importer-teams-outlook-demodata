@@ -1,0 +1,7 @@
+# Replace with IDs from your demo tenant; IDs never belong in scenario files.
+# Startup accepts an empty mapping; Teams plans fail clearly until configured.
+channels: {}
+# channels:
+#   launch:
+#     teamId: <team UUID>
+#     channelId: <channel ID, e.g. 19:...@thread.tacv2>

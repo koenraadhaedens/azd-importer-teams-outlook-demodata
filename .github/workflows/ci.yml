@@ -1,0 +1,40 @@
+name: Validate
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install --require-hashes -r requirements.lock
+      - run: pip install -e '.[dev]'
+      - run: ruff format --check src tests scripts
+      - run: ruff check src tests scripts
+      - run: mypy src
+      - run: pytest -q
+      - run: python -m demo_loader.cli --write-schema
+      - run: git diff --exit-code -- schemas skills/demo-scenario-creator/schema
+      - run: python -m demo_loader.cli examples/demo-scenario.yaml
+      - run: python -m demo_loader.cli skills/demo-scenario-creator/examples/scenario.yaml
+      - run: bandit -q -r src -c pyproject.toml
+      - run: pip-audit -r requirements.lock
+      - run: python scripts/check-repository.py
+      - run: az bicep install
+      - run: az bicep build --file infra/main.bicep --stdout > /dev/null
+      - run: az bicep build --file infra/aci.bicep --stdout > /dev/null
+      - shell: pwsh
+        run: ./scripts/check-powershell.ps1
+      - run: docker build --tag demo-loader:ci .
+      - shell: pwsh
+        # PR validation must not need credentials for the private deployment registry.
+        run: ./scripts/smoke-container.ps1 -Image demo-loader:ci -CaddyImage caddy:2.11.4-alpine

@@ -1,0 +1,17 @@
+# ACI is deployed by hooks because it is not a native azd service target.
+name: azd-m365-demo-loader
+metadata:
+  template: azd-m365-demo-loader@0.1.0
+infra:
+  provider: bicep
+  path: infra
+  module: main
+hooks:
+  preprovision:
+    shell: pwsh
+    run: ./scripts/prerequisites.ps1
+    interactive: true
+  predeploy:
+    shell: pwsh
+    run: ./scripts/deploy.ps1
+    interactive: true

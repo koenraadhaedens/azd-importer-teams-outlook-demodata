@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Microsoft 365 demo loader{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header>
+    <a href="/">Microsoft 365 demo loader</a>
+    {% if session %}
+    <form action="/logout" method="post">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <span>{{ session.claims.get('name', 'Signed-in user') }}</span>
+      <button type="submit">Sign out / switch user</button>
+    </form>
+    {% endif %}
+  </header>
+  <main id="main">{% block content %}{% endblock %}</main>
+  <footer>Isolated CDX demo tenants only. No password collection or silent Teams impersonation.</footer>
+</body>
+</html>

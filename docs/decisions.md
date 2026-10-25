@@ -1,0 +1,92 @@
+# Architectural decisions
+
+## 1. Teams: assisted delegated execution (Modes C + A)
+
+Each demo user signs in separately and executes only their own ready activities.
+`ChannelMessage.Send` supports normal channel messages and replies as that user.
+Dependencies can cross users; pending actions remain visible until the appropriate
+user signs in. The application never silently impersonates the five users.
+Chat creation and email reply/thread APIs are deliberately unsupported in v1.
+No `Teamwork.Migrate.All`, bot, beta endpoint, or password grant is used.
+
+## 2. Separate interactive and application identities
+
+An Entra confidential web app performs OIDC sign-in and delegated Teams calls.
+A user-assigned managed identity resolves the five users using application
+`User.Read.All` and sends mail through Graph `/users/{id}/sendMail`.
+Local development uses an explicit separate mail application credential.
+Managed identity conveys no Graph permissions by itself.
+
+Prefer Exchange Online **Application RBAC**, assigning `Application Mail.Send`
+only for a scope containing the five mailboxes. Do not additionally grant the
+same principal unscoped Entra `Mail.Send`: those grants are additive and defeat
+the RBAC boundary. Legacy Application Access Policy guidance is documented as
+an alternative, not mixed into the default.
+
+## 3. Fail-closed authorization and data handling
+
+Single-tenant authority; validate MSAL OIDC results, tenant, object ID, and an
+explicit object-ID allowlist or directly emitted group claim. Group overage
+fails closed (no directory-wide group lookup). Operators upload, start mail,
+cancel and retire runs; the five resolved demo object IDs can perform only their
+assigned Teams actions. No auth bypass, including in local development.
+
+## 4. Small ACI HTTPS deployment, without fictitious native ACI TLS
+
+ACI has no managed native HTTPS ingress. A Caddy sidecar terminates TLS on
+80/443 using an administrator-controlled public DNS hostname, and proxies to
+the application on loopback port 8000 (not exposed publicly). ACME needs public
+DNS and inbound 80/443. ACI's generated DNS label is not itself a promise that
+an ACME CA will issue a certificate; bring a controlled custom hostname.
+The azd deploy hook creates or replaces the group using the manually published
+images in `config/container-images.json`. It never builds or pushes images.
+Compose extends that same JSON configuration, and smoke tests use it by default.
+Provision creates only supporting resources, not a new registry. An administrator
+grants the runtime managed identity pull access on each configured existing
+registry. There is no untrusted bootstrap image. Prefer explicit release tags or
+digests; the requested tagless app default uses Docker's implicit `latest`.
+For enterprise deployments prefer Application Gateway/private ACI or another
+managed ingress platform; the POC intentionally avoids their cost.
+
+## 5. Durable journal, not distributed background scheduling
+
+Local mode uses atomic JSON replacement and fsync. Azure mode uses an
+Entra-authenticated private Blob with ETag compare-and-swap on every state
+transition. Conflicting writers or persistence errors poison the journal and
+stop further operations. One process/replica is required. No SQLite on SMB.
+The journal necessarily contains pending message content; reports and logs do
+not. Encryption at rest is supplied by Azure Storage; local disk must be protected.
+Retiring a run removes bodies but retains its fingerprint/tombstone.
+
+An action is durably marked running before its HTTP request. On restart it becomes
+unknown, never automatically retried. A Graph 202 means accepted, not delivered.
+Retries are restricted to explicit HTTP 429 rejections; POST timeouts/5xx are
+ambiguous and are not retried. Read-only user-resolution calls can retry 5xx.
+Exactly-once delivery cannot be promised because Graph sendMail has no supported
+idempotency-key guarantee. The journal prevents automatic replay, not remote
+duplicates after an administrator deliberately creates a different scenario.
+
+## 6. Explicit resource mapping and safe content
+
+Team/channel aliases map to administrator-supplied IDs outside scenarios. This
+avoids broad Teams discovery/read permissions. Graph itself checks channel access.
+User placeholders use only `{{user.key.displayName}}` and
+`{{user.key.userPrincipalName}}`, replaced literally, never through Jinja.
+Email HTML is sanitized to a small formatting-only allowlist (no links/images).
+All Teams bodies are plain text.
+
+## Verified official contracts
+
+- [sendMail v1.0](https://learn.microsoft.com/en-us/graph/api/user-sendmail?view=graph-rest-1.0)
+- [channel messages v1.0](https://learn.microsoft.com/en-us/graph/api/channel-post-messages?view=graph-rest-1.0)
+- [channel replies v1.0](https://learn.microsoft.com/en-us/graph/api/chatmessage-post-replies?view=graph-rest-1.0)
+- [Exchange Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
+
+No beta dependency. This is a security-conscious POC, not a certified production
+bulk-mail product or a substitute for tenant-specific penetration testing.
+
+The documented v1.0 application permission for listing/resolving users is
+`User.Read.All`, not delegated `User.ReadBasic.All`. This directory read privilege
+is needed solely for mandatory startup UPN resolution; only `id` and
+`userPrincipalName` are selected. It does not grant mailbox-content read access.
+See [list users](https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0).

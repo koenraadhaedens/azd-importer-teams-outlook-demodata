@@ -1,0 +1,30 @@
+schemaVersion: "1.0"
+scenarioId: fictional-launch-review
+title: Fictional launch review
+description: Two harmless coordination emails for the configured demo team.
+author: Demo operator
+createdAt: "2026-10-01T09:00:00Z"
+tenantAssumptions:
+  - Isolated licensed CDX demo tenant; five mailboxes configured and scoped.
+requiredUsers: [adele, alex, christie, diego, megan]
+requiredChannels: []
+dryRun: true
+metadata:
+  purpose: fictional-demo
+tags: [launch, review]
+activities:
+  - id: kickoff
+    type: email
+    user: adele
+    to: [alex, christie]
+    cc: [diego, megan]
+    subject: Fictional launch review
+    body: "Hello {{user.alex.displayName}}, please review the fictional launch checklist."
+  - id: followup
+    type: email
+    user: megan
+    to: [adele, alex, christie, diego]
+    subject: Fictional launch review follow-up
+    body: The demo checklist is ready for discussion. No customer data is included.
+    dependsOn: [kickoff]
+    delaySeconds: 120

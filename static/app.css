@@ -1,0 +1,24 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.6; }
+body { margin: 0; background: Canvas; color: CanvasText; }
+header, main, footer { padding: 1.25rem; max-width: 72rem; margin: auto; }
+header { display: flex; flex-wrap: wrap; justify-content: space-between; border-bottom: 2px solid GrayText; gap: 1rem; }
+header a { font-size: 1.25rem; font-weight: bold; }
+a { color: LinkText; }
+section, aside { margin-block: 1.5rem; }
+button, .button { font: inherit; padding: .55rem .9rem; margin-block: .5rem; cursor: pointer; min-height: 44px; }
+button:disabled { cursor: not-allowed; opacity: .65; }
+label, input[type=file] { display: block; margin-block: .7rem; }
+input[type=checkbox] { width: 1.2rem; height: 1.2rem; }
+.notice, .danger { border: 2px solid GrayText; border-radius: .3rem; padding: 1rem; }
+.danger { border-style: dashed; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: .6rem; border: 1px solid GrayText; text-align: left; }
+.table-scroll { overflow-x: auto; }
+pre, code { overflow-wrap: anywhere; white-space: pre-wrap; }
+pre { padding: 1rem; border: 1px solid GrayText; }
+details { padding: .75rem; border-bottom: 1px solid GrayText; }
+summary { cursor: pointer; }
+:focus-visible { outline: 3px solid Highlight; outline-offset: 4px; }
+.skip { position: absolute; top: -100px; }
+.skip:focus { top: 0; background: Canvas; padding: 1rem; }
+footer { border-top: 1px solid GrayText; font-size: .9rem; }

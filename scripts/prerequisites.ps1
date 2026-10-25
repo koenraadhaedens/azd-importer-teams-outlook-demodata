@@ -11,6 +11,12 @@ if ($LASTEXITCODE -ne 0) { throw "Run az login in the target tenant/subscription
 if ($env:DEMO_TENANT_CONFIRMED -ne "true") {
     throw "Set azd env set DEMO_TENANT_CONFIRMED true only after confirming the isolated CDX tenant."
 }
+$missing = @("OPERATOR_IDS", "ACME_EMAIL") | Where-Object {
+    [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))
+}
+if ($missing) {
+    throw "Missing azd environment values: $($missing -join ', '). Settings belong to the selected azd environment. Configure them with azd env set before provisioning; see README deployment setup."
+}
 az bicep version 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Bicep CLI is unavailable. Installing with Azure CLI for the current user..."

@@ -1,5 +1,7 @@
 $ErrorActionPreference = "Stop"
 $previousConfirmation = $env:DEMO_TENANT_CONFIRMED
+$previousOperators = $env:OPERATOR_IDS
+$previousEmail = $env:ACME_EMAIL
 $global:prerequisiteMock = @{}
 function global:azd {}
 function global:az {
@@ -36,7 +38,10 @@ try {
         @{ name = "installation fails"; installFails = $true; installs = 1; checks = 1; error = "Bicep installation failed" },
         @{ name = "verification fails"; verificationFails = $true; installs = 1; checks = 2; error = "Bicep is still unavailable" },
         @{ name = "login absent"; loginFails = $true; installs = 0; checks = 0; error = "Run az login" },
-        @{ name = "demo tenant not confirmed"; unconfirmed = $true; installs = 0; checks = 0; error = "DEMO_TENANT_CONFIRMED" }
+        @{ name = "demo tenant not confirmed"; unconfirmed = $true; installs = 0; checks = 0; error = "DEMO_TENANT_CONFIRMED" },
+        @{ name = "operators missing"; missingOperators = $true; installs = 0; checks = 0; error = "Missing azd environment values: OPERATOR_IDS." },
+        @{ name = "ACME email missing"; missingEmail = $true; installs = 0; checks = 0; error = "Missing azd environment values: ACME_EMAIL." },
+        @{ name = "new environment missing both settings"; missingOperators = $true; missingEmail = $true; installs = 0; checks = 0; error = "Missing azd environment values: OPERATOR_IDS, ACME_EMAIL." }
     )) {
         $global:prerequisiteMock = @{
             installed = [bool]$case.installed
@@ -47,6 +52,8 @@ try {
             versionChecks = 0
         }
         $env:DEMO_TENANT_CONFIRMED = if ($case.unconfirmed) { "false" } else { "true" }
+        $env:OPERATOR_IDS = if ($case.missingOperators) { "" } else { '["' + [guid]::NewGuid().ToString() + '"]' }
+        $env:ACME_EMAIL = if ($case.missingEmail) { " " } else { "operator@example.org" }
         $failure = $null
         try {
             & (Join-Path $PSScriptRoot "../scripts/prerequisites.ps1")
@@ -74,6 +81,8 @@ try {
     }
 } finally {
     $env:DEMO_TENANT_CONFIRMED = $previousConfirmation
+    $env:OPERATOR_IDS = $previousOperators
+    $env:ACME_EMAIL = $previousEmail
     Remove-Item Function:\az, Function:\azd
     Remove-Variable prerequisiteMock -Scope Global
 }

@@ -166,120 +166,158 @@ No subscription, tenant ID or credential is committed in deployment parameters.
 The public hostname and web client ID are discovered/created automatically;
 operator IDs are supplied at deployment time.
 
-```powershell
-azd auth login
-az login
-azd env new my-demo-loader
-azd env set AZURE_LOCATION westeurope
-azd env set DEMO_TENANT_CONFIRMED true
-azd env set ACME_EMAIL your-admin-mailbox@example.org
-azd env set OPERATOR_IDS '["<your-operator-object-id>"]'
-# Select a subscription in the CDX tenant; provisioning exports AZURE_TENANT_ID.
-```
+The following steps describe a **fresh deployment**, starting with a new clone
+and a new azd environment. No settings from another deployment are required.
 
 ### Azure portal Cloud Shell (PowerShell)
 
-Select **PowerShell** in Cloud Shell. Deployment needs neither a local Python
-environment nor Docker; both images must already be published in the configured
-registry. Cloud Shell's Azure CLI is normally authenticated by the portal.
-Confirm its tenant/subscription with `az account show`; switch to the intended
-subscription with `az account set --subscription <subscription-id>` if necessary.
-Authenticate azd if prompted; its authentication is separate from Azure CLI.
+#### 1. Prepare the tenant and container images
 
-For the already cloned repository and existing `demoimport` environment:
+- Use an isolated CDX tenant and an Azure subscription in that same tenant.
+- Pre-authorize the **deployment identity** for application registration in
+  Entra as described in [Entra setup](docs/entra-setup.md). Do not grant
+  application-administration permissions to the runtime ACI identity.
+- Configure the real five-user/resource mappings, build the application image
+  and manually publish both images as described in
+  [Docker and Caddy HTTPS](#docker-and-caddy-https). Cloud Shell deployment needs
+  neither a Python environment nor Docker; building images happens separately.
+- Have an administrator available to grant registry pull access, Graph/Exchange
+  permissions, delegated consent and enterprise-app assignments.
+
+#### 2. Clone and select the target subscription
+
+Open Azure portal **Cloud Shell**, select **PowerShell**, then run:
 
 ```powershell
-azd env select demoimport
+git clone https://github.com/koenraadhaedens/azd-importer-teams-outlook-demodata.git
+cd azd-importer-teams-outlook-demodata
+
+az account list --output table
+az account set --subscription "<your-subscription-id>"
+az account show --query "{subscription:name,tenantId:tenantId}" --output table
+```
+
+Verify that the displayed tenant is the isolated CDX tenant. Cloud Shell's Azure
+CLI is normally authenticated by the portal. Authenticate azd if prompted; its
+authentication is separate from Azure CLI. On a local PowerShell 7 terminal,
+install the prerequisite tools and run `az login` and `azd auth login` first.
+
+Edit [config/container-images.json](config/container-images.json) to match the
+two published image references before provisioning.
+
+#### 3. Create and configure a new environment
+
+Choose a unique environment name. Replace the subscription ID and administrative
+email below with real values:
+
+```powershell
+azd env new my-demo-loader
+azd env set AZURE_SUBSCRIPTION_ID "<your-subscription-id>"
 azd env set AZURE_LOCATION westeurope
 # Only after confirming this is the isolated CDX tenant:
 azd env set DEMO_TENANT_CONFIRMED true
-azd env set ACME_EMAIL your-admin-mailbox@example.org
-azd env set OPERATOR_IDS '["<your-operator-object-id>"]'
+azd env set ACME_EMAIL "your-admin-mailbox@example.org"
+
+# Allow the signed-in user to operate the application:
+$operatorId = az ad signed-in-user show --query id --output tsv
+if ($LASTEXITCODE -ne 0 -or -not $operatorId) {
+    throw "Could not retrieve your Entra user object ID."
+}
+$operatorIds = ConvertTo-Json -InputObject @($operatorId.Trim()) -Compress
+azd env set OPERATOR_IDS $operatorIds
+```
+
+OPERATOR_IDS is a JSON array of allowed Entra user object IDs, not email
+addresses. To authorize different operators, supply their reviewed object IDs
+instead. All settings above are required for this new environment. Tenant ID,
+managed-identity IDs, public hostname and web client ID are populated during
+provisioning; do not invent or manually set them.
+
+#### 4. Provision resources and authorize registry pulls
+
+```powershell
 azd provision
 ```
 
-Replace the mailbox and operator object ID with real values. The hook installs
-missing Bicep automatically and reuses it on subsequent runs. If running an older
-checkout that still reports "Bicep CLI not found", run `az bicep install` manually
-and retry `azd provision`. A fresh, non-persistent Cloud Shell session may require
-cloning again and recreating its azd environment; keep credentials out of Git.
+The preprovision hook checks required settings and installs Bicep if missing.
+Provisioning creates the resource group, runtime managed identity, vault, journal
+storage, certificate share and Log Analytics, and exports their IDs.
 
-### First provision and administrator bootstrap
-
-1. Pre-authorize the **deployment identity** for application registration in
-   Entra as described in [Entra setup](docs/entra-setup.md). Do not grant
-   application-administration permissions to the runtime ACI identity.
-2. First-time identity bootstrap: `azd provision` creates the resource group,
-      runtime managed identity, vault, journal storage, certificate share and
-   Log Analytics. Read its outputs with `azd env get-values`; keep them private.
-   Its **postprovision hook** creates ACI in a safe initialization mode,
-   retrieves its actual FQDN and saves PUBLIC_HOSTNAME/PUBLIC_URL. It then creates
-   the web registration, enterprise principal and managed-identity trust with
-   matching HTTPS URLs. WEB_CLIENT_ID is saved automatically; no secret is stored.
-   The initial app is dormant and Caddy returns HTTP 503; no demo execution or
-   certificate request occurs until final deployment.
-      A registry administrator must grant that identity pull access on the existing
-      registry; it is not implicitly granted by ACI or managed identity:
-
-      ```powershell
-      $registryId = az acr show --name acrdefcontainer --query id -o tsv
-      az role assignment create --assignee-object-id <AZURE_IDENTITY_PRINCIPAL_ID> `
-        --assignee-principal-type ServicePrincipal --role AcrPull --scope $registryId
-      ```
-
-      This command is for a standard RBAC registry. For an ABAC-enabled registry use
-      the appropriate **Container Registry Repository Reader** assignment and
-      repository conditions instead. If images use different registries, authorize
-      the identity on each. Cross-subscription registries require administrator
-      access at their scope; cross-tenant pulls are not configured here. Registry
-      networking must permit ACI pulls. Bicep supplies managed-identity registry
-      credentials for each distinct image registry without storing passwords.
-      On the first provision, the hook may stop because the new identity does
-      not yet have registry pull access. Supporting resources/identity already
-      exist: grant that access using the outputs, then rerun `azd provision`.
-      Publish both configured images before initialization; no build/push occurs.
-3. Explicitly grant the managed identity `User.Read.All` with
-   [grant-graph-identity.ps1](scripts/grant-graph-identity.ps1). Configure the
-   five-mailbox scope with [setup-exchange.ps1](scripts/setup-exchange.ps1);
-   verify all five allowed mailboxes and a sixth forbidden mailbox.
-4. An administrator grants delegated ChannelMessage.Send consent and assigns
-   operators/the five demo users or allowed groups to the enterprise app. Use
-   [setup-entra.ps1](scripts/setup-entra.ps1) with the saved WEB_CLIENT_ID, or the
-   portal. Registration alone intentionally grants neither consent nor access.
-   Key Vault is retained for optional future secrets; web authentication does not
-   read it. Existing secret/Secrets User grants should be retired after migration.
-5. Read the generated URL with `azd env get-value PUBLIC_URL`. Do not guess the
-   FQDN from ACI_DNS_LABEL or set PUBLIC_HOSTNAME manually. Azure's returned FQDN
-   is used consistently for the app, Caddy and Entra. If Azure changes it, rerun
-   `azd provision` to reconcile registration before deployment.
-6. Configure actual demo users/resources locally and manually build/push the app
-   image. Publish Caddy to the configured location as well. The deploy workflow
-   does not rebuild packaged configuration or publish images.
-
-Then:
+The new managed identity needs registry pull access before ACI can start. The
+postprovision hook may stop at image pull until a registry administrator grants
+that access. For the default standard-RBAC registry:
 
 ```powershell
-azd up
+$principalId = azd env get-value AZURE_IDENTITY_PRINCIPAL_ID
+if ($LASTEXITCODE -ne 0) { throw "Could not retrieve the runtime identity." }
+$registryId = az acr show --name acrdefcontainer --query id --output tsv
+if ($LASTEXITCODE -ne 0) { throw "Could not retrieve the registry ID." }
+az role assignment create --assignee-object-id $principalId `
+    --assignee-principal-type ServicePrincipal --role AcrPull --scope $registryId
+if ($LASTEXITCODE -ne 0) { throw "Could not grant registry pull access." }
+
+# Complete initialization once the new identity's pull permission has propagated:
+azd provision
+```
+
+Use your actual registry name if different. For an ABAC-enabled registry use the
+appropriate **Container Registry Repository Reader** assignment and repository
+conditions instead. Authorize each registry referenced by the image configuration.
+Cross-subscription registries require administrator access at their scope;
+cross-tenant pulls are not configured here. Registry networking must permit ACI
+pulls. No registry password or automatic image build/push is supplied.
+
+With pull access, the postprovision hook creates ACI in safe initialization mode,
+discovers its actual FQDN and saves PUBLIC_HOSTNAME/PUBLIC_URL. It creates the web
+registration, enterprise principal and managed-identity trust with matching URLs;
+WEB_CLIENT_ID is saved automatically. No web client secret is created. The app
+remains dormant and Caddy returns HTTP 503 until final deployment.
+
+#### 5. Complete administrator permissions
+
+1. Grant the runtime managed identity Graph `User.Read.All` using
+   [grant-graph-identity.ps1](scripts/grant-graph-identity.ps1).
+2. Configure the five-mailbox scope using
+   [setup-exchange.ps1](scripts/setup-exchange.ps1). Verify all five allowed
+   mailboxes and a sixth forbidden mailbox.
+3. Grant delegated ChannelMessage.Send consent and assign operators/the five
+   demo users or allowed groups to the enterprise app. Use
+   [setup-entra.ps1](scripts/setup-entra.ps1) with the generated WEB_CLIENT_ID, or
+   the portal. Registration alone intentionally grants neither consent nor access.
+
+Allow permission propagation before starting the app. Key Vault is retained for
+optional future secrets; web authentication does not read it.
+
+#### 6. Deploy and open the application
+
+```powershell
+azd deploy
+azd env get-value PUBLIC_URL
+```
+
+Deployment starts the app and Caddy from the configured images. Caddy obtains
+and renews a public ACME certificate for the discovered Azure FQDN; no custom
+DNS or manual PUBLIC_HOSTNAME is required. Deployment verifies TLS and application
+readiness before reporting success.
+
+Sign in, inspect the resolved users/resources and perform a dry run. Real
+delivery is disabled by default:
+
+```powershell
 # After scope verification and a successful dry run, enable real sends explicitly:
 azd env set MAILBOX_SCOPE_CONFIRMED true
 azd env set DELIVERY_ENABLED true
 azd deploy
 ```
 
-Once administrator-owned prerequisites and the manually published images exist,
-`azd up` provisions supporting resources, initializes/discovers ACI's endpoint,
-registers it in Entra, then starts the final app/Caddy configuration from the
-configured images. Caddy requests/renews the public ACME certificate for that
-FQDN. Deployment checks the TLS-verified HTTPS health
-endpoint. A failed readiness check is a failed deployment, not success.
-Propagation of Entra consent, Azure RBAC or DNS can require a later retry.
-App registration and managed-identity federation are automated; delegated
-consent and enterprise-app assignments are deliberately not.
+### Updating an installed environment
 
 For updates publish a new image and update its tag/digest in the configuration,
 then run `azd deploy`; for infrastructure changes run `azd up`. Prefer a new
 immutable reference rather than overwriting `:latest`: an unchanged ACI
 declaration is not a reliable image-refresh mechanism.
+If Azure changes the ACI FQDN, run `azd provision` to reconcile the generated
+hostname and Entra URLs before deployment.
 Changing a running ACI group may briefly interrupt service; journal recovery
 marks interrupted writes unknown rather than replaying them.
 

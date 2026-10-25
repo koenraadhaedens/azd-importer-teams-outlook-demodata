@@ -43,7 +43,7 @@ def main() -> None:
         assert yaml.safe_load(path.read_text("utf-8"))["jobs"], f"Missing workflow jobs: {path}"
     hooks = load_yaml(Path("azure.yaml").read_bytes())["hooks"]
     assert hooks["predeploy"]
-    assert hooks["postprovision"]["run"] == "./scripts/register-web-app.ps1"
+    assert hooks["postprovision"]["run"] == "./scripts/initialize-web-endpoint.ps1"
     assert hooks["postprovision"]["interactive"] is False
     assert load_yaml(Path("compose.yaml").read_bytes())["services"]["app"].get("ports") is None
     images = json.loads(Path("config/container-images.json").read_text("utf-8"))

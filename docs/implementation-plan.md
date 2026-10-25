@@ -11,7 +11,9 @@ name is retained; no remote or history is rewritten.
    CSRF, explicit operator/user authorization, and delegated Teams token handling.
    Azure ACI runtime uses its user-assigned managed identity as a federated web
    app client assertion, not a local/Key Vault client secret. The noninteractive
-   azd postprovision hook registers URLs/app/trust; consent and assignments
+   azd postprovision hook initializes a dormant ACI group, retrieves its actual
+   FQDN and registers matching URLs/app/trust. Final deployment enables the app
+   and Caddy ACME; no up-front hostname/custom DNS. Consent and assignments
    remain administrator-controlled.
 4. Implement Graph adapters and a durable execution journal: assisted Teams,
    app-only mail, cancellation, dependencies, bounded timing, safe retries,

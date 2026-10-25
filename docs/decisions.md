@@ -47,14 +47,17 @@ assigned Teams actions. No auth bypass, including in local development.
 ## 4. Small ACI HTTPS deployment, without fictitious native ACI TLS
 
 ACI has no managed native HTTPS ingress. A Caddy sidecar terminates TLS on
-80/443 using an administrator-controlled public DNS hostname, and proxies to
-the application on loopback port 8000 (not exposed publicly). ACME needs public
-DNS and inbound 80/443. ACI's generated DNS label is not itself a promise that
-an ACME CA will issue a certificate; bring a controlled custom hostname.
+80/443 using Azure's assigned ACI FQDN, and proxies to the application on loopback
+8000 (not exposed publicly). The noninteractive postprovision hook initializes
+the same ACI group with a dormant app and HTTP-only Caddy 503, retrieves the actual
+FQDN, and registers matching URLs in Entra. Final deployment starts the real app
+and enables Caddy automatic public ACME issuance/renewal. No custom DNS or
+preconfigured hostname is required. Public DNS resolution, inbound 80/443 and
+successful CA validation remain prerequisites; failures are not bypassed.
 The azd deploy hook creates or replaces the group using the manually published
 images in `config/container-images.json`. It never builds or pushes images.
 Compose extends that same JSON configuration, and smoke tests use it by default.
-Provision creates only supporting resources, not a new registry. An administrator
+Provision creates supporting resources and the initial group, not a new registry. An administrator
 grants the runtime managed identity pull access on each configured existing
 registry. There is no untrusted bootstrap image. Prefer explicit release tags or
 digests; the requested tagless app default uses Docker's implicit `latest`.

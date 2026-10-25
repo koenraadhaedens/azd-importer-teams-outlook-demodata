@@ -13,7 +13,7 @@ hooks:
     interactive: true
   postprovision:
     shell: pwsh
-    run: ./scripts/register-web-app.ps1
+    run: ./scripts/initialize-web-endpoint.ps1
     interactive: false
   predeploy:
     shell: pwsh

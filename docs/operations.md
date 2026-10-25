@@ -96,7 +96,8 @@ the configuration fingerprint intentionally blocks such runs.
 4. Revoke delegated consent/assignments and delete the dedicated web registration.
    Remove runtime Graph role grants and the web registration's federated trust.
 5. Run `azd down`; the hook-created ACI group is in the deleted resource group.
-6. Remove custom DNS and dedicated pipeline federation/identity if no longer used.
+6. Remove dedicated pipeline federation/identity if no longer used. Azure removes
+   the generated ACI DNS endpoint with the group; no custom CNAME is created.
 7. Key Vault purge protection prevents immediate purge/name reuse; wait the
    configured recovery interval. Do not disable protection to simplify teardown.
 

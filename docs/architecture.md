@@ -17,9 +17,14 @@ Caddy proxies to `127.0.0.1:8000`. Compose uses `app:8000`, with **no app ports*
 The server ignores forwarded headers; templates use relative assets and OAuth
 URLs use the explicitly configured HTTPS origin, avoiding spoofing/mixed content.
 
-Public ACME requires a controlled hostname resolving to the group and reachable
-80/443. Do not assume ACI's generated domain qualifies for public certificate
-issuance. Caddy automatically renews certificates; Azure Files stores TLS state
+The postprovision hook first creates the group with a dormant app and HTTP-only
+Caddy 503 using the same configured images, identity, volumes and port layout.
+It reads the actual Azure FQDN and registers matching Entra URLs, persisting the
+host/client ID in azd. Final deployment enables the app and Caddy ACME for that
+FQDN; public resolution and reachable 80/443 are required. No custom DNS is
+needed. Existing groups are not reset to initialization mode on reruns. Hostname
+drift blocks final deployment until provisioning reconciles Entra.
+Caddy automatically renews certificates; Azure Files stores TLS state
 across ACI replacement and avoids repeated issuance/rate-limit problems.
 
 The certificate-only storage account uses an account key because ACI's Azure

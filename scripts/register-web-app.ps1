@@ -35,7 +35,7 @@ function Save-AzdValue {
 }
 
 if ($PublicHostname -notmatch '^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$') {
-    throw "Configure PUBLIC_HOSTNAME as the controlled HTTPS hostname before azd provision."
+    throw "A valid discovered ACI hostname is required; run the azd endpoint initialization hook."
 }
 $null = [guid]::Parse($TenantId)
 $null = [guid]::Parse($IdentityPrincipalId)
@@ -149,6 +149,7 @@ if ($principals.Count -eq 0) {
     } | Out-Null
 }
 Save-AzdValue WEB_SERVICE_PRINCIPAL_ID $sp.id
+Save-AzdValue WEB_REGISTERED_HOSTNAME $PublicHostname
 Write-Host "Web registration and managed-identity trust configured for $origin."
 Write-Host "No secret/certificate was created and no administrator consent or user/group assignment was granted."
 Write-Host "An administrator must grant ChannelMessage.Send consent and enterprise-app assignments before users sign in."

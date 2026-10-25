@@ -115,3 +115,31 @@ runtime has no app-registration management privilege.
 These are mocked/offline checks, not claims of live Entra registration,
 authorization-code redemption with federation, Azure deployment or user sign-in.
 Those require the administrator's real tenant and permission bootstrap.
+
+## Automatic ACI hostname follow-up
+
+PUBLIC_HOSTNAME is now discovered, not required input. The postprovision hook
+creates the configured ACI group in dormant initialization mode (or reuses an
+existing group), reads Azure's actual `ipAddress.fqdn`, persists the HTTPS URL,
+and registers matching Entra URLs/trust. Final deployment checks the completed
+registration marker, starts the real app, enables Caddy ACME, and verifies both
+TLS and the `ready` health payload. No custom domain/CNAME is required.
+
+Validated locally:
+
+- **48 Python tests passed**; repository contracts, Ruff formatting/lint passed.
+- Both Bicep entrypoints compiled successfully.
+- PowerShell 7 mocked integration tests passed for first-time safe bootstrap,
+  actual-FQDN retrieval (distinct from the requested DNS label), URL persistence,
+  Entra/Caddy/app agreement, reuse without resetting existing groups, hostname
+  drift rejection, incomplete-registration rejection, and failure on HTTP 200
+  with a non-ready payload.
+- PowerShell syntax checks passed for the shared deployment helper and hooks.
+- The actual bootstrap Caddy configuration extracted from compiled Bicep ran in
+  Docker and returned only HTTP 503; it did not obtain/store certificates.
+
+No Azure deployment or public `azurecontainer.io` ACME issuance has been
+performed. Live issuance still requires working public DNS, reachable ports,
+certificate-authority acceptance/rate-limit availability and writable persistent
+certificate storage. Missing registry pull permissions can stop the initial hook:
+grant them to the provisioned identity and rerun provision.

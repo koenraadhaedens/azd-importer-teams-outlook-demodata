@@ -30,8 +30,9 @@ flowchart LR
 
 ACI does **not** provide native managed HTTPS ingress. Caddy owns ports 80/443,
 obtains and renews ACME certificates, and forwards to the app. ACI does not
-expose port 8000. Bring an administrator-controlled public DNS hostname and
-point its CNAME at ACI's FQDN. Port 80 is needed for ACME/HTTPS redirects.
+expose port 8000. Deployment retrieves Azure's assigned `azurecontainer.io`
+hostname automatically and uses it for Caddy and Entra; no custom domain,
+manual PUBLIC_HOSTNAME or CNAME is needed. Port 80 is needed for ACME/HTTPS redirects.
 Certificate keys persist in a dedicated private Azure Files share; application
 state uses a separate Entra-authenticated Blob account. For enterprise ingress
 and WAF/private networking options see [architecture](docs/architecture.md).
@@ -47,7 +48,7 @@ and WAF/private networking options see [architecture](docs/architecture.md).
   authors must be members of the mapped existing team/channel.
 - Tenant administrator for app consent, application role grants and enterprise
   app assignments; Exchange administrator for mailbox-scoped Application RBAC.
-- Public custom DNS and a mailbox for ACME notices for Azure HTTPS deployment.
+- A mailbox for ACME notices and public port 80/443 reachability for HTTPS.
 - Never use production users, customer data, or real business distribution lists.
 
 ## Exact permissions and author model
@@ -79,7 +80,7 @@ Key Vault credential retrieval. It still provides interactive user sign-in;
 managed identity does not replace delegated Teams authorship.
 
 The noninteractive azd postprovision hook creates/updates the web registration,
-derives redirect/logout URLs from PUBLIC_HOSTNAME, configures managed-identity
+first discovers the ACI FQDN, derives redirect/logout URLs from it, configures managed-identity
 trust, and saves WEB_CLIENT_ID automatically. The deployment identity must
 already have Entra application-management authorization. **Consent and
 enterprise-app assignments remain administrator steps**, not automatic grants.
@@ -160,7 +161,8 @@ authentication in the production image.
 
 The application uses hooks because ACI is not a built-in azd service host.
 No subscription, tenant ID or credential is committed in deployment parameters.
-The public hostname, client IDs and operator IDs are supplied at deployment time.
+The public hostname and web client ID are discovered/created automatically;
+operator IDs are supplied at deployment time.
 
 ```powershell
 azd auth login
@@ -168,7 +170,6 @@ az login
 azd env new my-demo-loader
 azd env set AZURE_LOCATION westeurope
 azd env set DEMO_TENANT_CONFIRMED true
-azd env set PUBLIC_HOSTNAME loader.your-controlled-domain.example
 azd env set ACME_EMAIL your-admin-mailbox@example.org
 azd env set OPERATOR_IDS '["<your-operator-object-id>"]'
 # Ensure AZURE_TENANT_ID targets the CDX tenant; azd prompts for subscription.
@@ -180,9 +181,12 @@ azd env set OPERATOR_IDS '["<your-operator-object-id>"]'
 2. First-time identity bootstrap: `azd provision` creates the resource group,
       runtime managed identity, vault, journal storage, certificate share and
    Log Analytics. Read its outputs with `azd env get-values`; keep them private.
-   Its **postprovision hook** automatically creates the web registration,
-   enterprise principal and managed-identity trust, including HTTPS URLs.
-   WEB_CLIENT_ID is saved automatically; no secret is generated or stored.
+   Its **postprovision hook** creates ACI in a safe initialization mode,
+   retrieves its actual FQDN and saves PUBLIC_HOSTNAME/PUBLIC_URL. It then creates
+   the web registration, enterprise principal and managed-identity trust with
+   matching HTTPS URLs. WEB_CLIENT_ID is saved automatically; no secret is stored.
+   The initial app is dormant and Caddy returns HTTP 503; no demo execution or
+   certificate request occurs until final deployment.
       A registry administrator must grant that identity pull access on the existing
       registry; it is not implicitly granted by ACI or managed identity:
 
@@ -199,6 +203,10 @@ azd env set OPERATOR_IDS '["<your-operator-object-id>"]'
       access at their scope; cross-tenant pulls are not configured here. Registry
       networking must permit ACI pulls. Bicep supplies managed-identity registry
       credentials for each distinct image registry without storing passwords.
+      On the first provision, the hook may stop because the new identity does
+      not yet have registry pull access. Supporting resources/identity already
+      exist: grant that access using the outputs, then rerun `azd provision`.
+      Publish both configured images before initialization; no build/push occurs.
 3. Explicitly grant the managed identity `User.Read.All` with
    [grant-graph-identity.ps1](scripts/grant-graph-identity.ps1). Configure the
    five-mailbox scope with [setup-exchange.ps1](scripts/setup-exchange.ps1);
@@ -209,10 +217,10 @@ azd env set OPERATOR_IDS '["<your-operator-object-id>"]'
    portal. Registration alone intentionally grants neither consent nor access.
    Key Vault is retained for optional future secrets; web authentication does not
    read it. Existing secret/Secrets User grants should be retired after migration.
-5. Set the custom DNS CNAME to
-   `<ACI_DNS_LABEL>.<AZURE_LOCATION>.azurecontainer.io` from provision outputs
-   (verify the actual FQDN emitted by deployment). The deployment hook also prints
-   the actual ACI FQDN. The hook already registers the configured HTTPS callback.
+5. Read the generated URL with `azd env get-value PUBLIC_URL`. Do not guess the
+   FQDN from ACI_DNS_LABEL or set PUBLIC_HOSTNAME manually. Azure's returned FQDN
+   is used consistently for the app, Caddy and Entra. If Azure changes it, rerun
+   `azd provision` to reconcile registration before deployment.
 6. Configure actual demo users/resources locally and manually build/push the app
    image. Publish Caddy to the configured location as well. The deploy workflow
    does not rebuild packaged configuration or publish images.
@@ -228,8 +236,10 @@ azd deploy
 ```
 
 Once administrator-owned prerequisites and the manually published images exist,
-`azd up` provisions supporting resources, creates/replaces ACI from the configured
-image references, and checks the HTTPS health
+`azd up` provisions supporting resources, initializes/discovers ACI's endpoint,
+registers it in Entra, then starts the final app/Caddy configuration from the
+configured images. Caddy requests/renews the public ACME certificate for that
+FQDN. Deployment checks the TLS-verified HTTPS health
 endpoint. A failed readiness check is a failed deployment, not success.
 Propagation of Entra consent, Azure RBAC or DNS can require a later retry.
 App registration and managed-identity federation are automated; delegated
@@ -316,7 +326,7 @@ The pre-existing registry and manually published images are not deleted. Remove
 the retired managed identity's registry-role assignment separately if necessary.
 Purge-protected Key Vault remains recoverable for seven days; names cannot be
 immediately reused. App registrations, consent, Exchange assignments, federated
-pipeline identities and custom DNS are **tenant-level/external resources**, not
+pipeline identities are **tenant-level/external resources**, not
 removed by azd down. Remove them using [operations](docs/operations.md).
 
 ## Security warnings and known limitations

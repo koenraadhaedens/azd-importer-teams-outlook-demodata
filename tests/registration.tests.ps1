@@ -11,6 +11,11 @@ $global:registrationMock = @{
     sp = $null
     wrongTenant = $false
     denyGraph = $false
+    containerExists = $false
+    fqdn = "azure-assigned-hash.westeurope.azurecontainer.io"
+    deployments = [System.Collections.Generic.List[object]]::new()
+    healthUrls = [System.Collections.Generic.List[string]]::new()
+    healthReady = $true
 }
 function Assert {
     param([bool]$Condition, [string]$Message)
@@ -18,6 +23,13 @@ function Assert {
 }
 function global:azd {
     $global:LASTEXITCODE = 0
+    if ($args[0] -eq "env" -and $args[1] -eq "get-value") {
+        if ($global:registrationMock.saved.ContainsKey($args[2])) {
+            return $global:registrationMock.saved[$args[2]]
+        }
+        $global:LASTEXITCODE = 1
+        return
+    }
     Assert ($args[0] -eq "env" -and $args[1] -eq "set") "Only azd env set is expected"
     $global:registrationMock.saved[$args[2]] = $args[3]
 }
@@ -30,6 +42,18 @@ function global:az {
             tenantId = $(if ($state.wrongTenant) { [guid]::NewGuid().ToString() } else { $state.tenant })
             principalId = $state.principal
         } | ConvertTo-Json -Compress
+    }
+    if ($args[0] -eq "container" -and $args[1] -eq "list") {
+        return ConvertTo-Json -Depth 5 -Compress -InputObject @(if ($state.containerExists) {
+            @{ name = $env:ACI_NAME; ipAddress = @{ fqdn = $state.fqdn } }
+        })
+    }
+    if ($args[0] -eq "container" -and $args[1] -eq "show") { return $state.fqdn }
+    if ($args[0] -eq "deployment") {
+        $file = $args[[array]::IndexOf($args, "--parameters") + 1].Substring(1)
+        $state.deployments.Add((Get-Content -Raw $file | ConvertFrom-Json).parameters)
+        $state.containerExists = $true
+        return
     }
     Assert ($args[0] -eq "rest") "Registration may not login, mint credentials or deploy resources"
     if ($state.denyGraph) { $global:LASTEXITCODE = 1; return }
@@ -75,7 +99,17 @@ function global:az {
     }
     throw "Unexpected Graph operation: $method $path"
 }
+function global:Invoke-WebRequest {
+    param([string]$Uri, [int]$TimeoutSec)
+    $global:registrationMock.healthUrls.Add($Uri)
+    return @{
+        StatusCode = 200
+        Content = $(if ($global:registrationMock.healthReady) { '{"status":"ready"}' } else { '{"status":"initializing"}' })
+    }
+}
+function global:Start-Sleep { param([int]$Seconds) }
 $oldId = $env:WEB_CLIENT_ID
+$environment = @{}
 $registrationScript = Join-Path (Join-Path $PSScriptRoot "..") "scripts/register-web-app.ps1"
 try {
     $state = $global:registrationMock
@@ -127,9 +161,73 @@ try {
     $failed = $false
     try { & $registrationScript @parameters } catch { $failed = $true }
     Assert $failed "Graph authorization failure must be explicit without login fallback"
-    Write-Host "PASS: noninteractive registration, idempotency, URL/trust reconciliation, tenant/application boundaries and no consent/secret side effects."
+    $state.denyGraph = $false
+    $values = @{
+        AZURE_RESOURCE_GROUP = "rg-test"
+        AZURE_IDENTITY_RESOURCE_ID = $state.identityId
+        AZURE_IDENTITY_PRINCIPAL_ID = $state.principal
+        AZURE_IDENTITY_CLIENT_ID = [guid]::NewGuid().ToString()
+        AZURE_TENANT_ID = $state.tenant
+        JOURNAL_BLOB_URL = "https://example.blob.core.windows.net/journal/runs.json"
+        ACI_NAME = "aci-test"
+        ACI_DNS_LABEL = "label-not-the-returned-host"
+        AZURE_LOG_WORKSPACE_NAME = "logs-test"
+        AZURE_CERT_STORAGE_NAME = "certtest"
+        ACME_EMAIL = "operator@example.org"
+        OPERATOR_IDS = '["' + [guid]::NewGuid().ToString() + '"]'
+        DEMO_TENANT_CONFIRMED = "true"
+        DELIVERY_ENABLED = "true"
+        MAILBOX_SCOPE_CONFIRMED = "true"
+        PUBLIC_HOSTNAME = "stale.example.org"
+        PUBLIC_URL = ""
+    }
+    foreach ($name in $values.Keys) {
+        $environment[$name] = [Environment]::GetEnvironmentVariable($name)
+        [Environment]::SetEnvironmentVariable($name, $values[$name])
+    }
+    $initialize = Join-Path (Join-Path $PSScriptRoot "..") "scripts/initialize-web-endpoint.ps1"
+    $deploy = Join-Path (Join-Path $PSScriptRoot "..") "scripts/deploy.ps1"
+    & $initialize
+    Assert ($state.deployments.Count -eq 1) "First initialization should create exactly one bootstrap"
+    $bootstrap = $state.deployments[0]
+    Assert $bootstrap.bootstrap.value "First deployment must use initialization mode"
+    Assert (-not $bootstrap.deliveryEnabled.value) "Bootstrap must disable real delivery"
+    Assert ($bootstrap.webClientId.value -eq "" -and $bootstrap.publicHostname.value -eq "") "Bootstrap must not use guessed IDs/hostname"
+    Assert ($state.saved.PUBLIC_HOSTNAME -eq $state.fqdn) "Use the actual Azure FQDN, not the label or previous custom hostname"
+    Assert ($state.saved.PUBLIC_URL -eq "https://$($state.fqdn)") "Discovered URL was not saved"
+    Assert ($state.saved.WEB_REGISTERED_HOSTNAME -eq $state.fqdn) "Registration success must bind to the discovered hostname"
+    $patch = @($state.requests | Where-Object {
+        $_.method -eq "PATCH" -and $_.path -eq "applications/$($state.app.id)"
+    })[-1]
+    Assert ($patch.body.web.redirectUris[0] -eq "https://$($state.fqdn)/auth/callback") "Entra must use the discovered FQDN"
+    & $initialize
+    Assert ($state.deployments.Count -eq 1) "Rerun must not reset an existing group to bootstrap"
+    & $deploy
+    Assert ($state.deployments.Count -eq 2) "Final deployment was not applied"
+    Assert (-not $state.deployments[1].bootstrap.value) "Final deployment must start the real app"
+    Assert ($state.deployments[1].publicHostname.value -eq $state.fqdn) "Caddy/app hostname differs from Entra"
+    Assert ($state.healthUrls[0] -eq "https://$($state.fqdn)/healthz") "Health must check discovered HTTPS endpoint"
+    $state.fqdn = "changed.westeurope.azurecontainer.io"
+    $failed = $false
+    try { & $deploy } catch { $failed = $true }
+    Assert $failed "Hostname drift must stop deployment until registration is reconciled"
+    Assert ($state.deployments.Count -eq 2) "Drift must be rejected before updating the group"
+    $state.saved.PUBLIC_HOSTNAME = $state.fqdn
+    $failed = $false
+    try { & $deploy } catch { $failed = $true }
+    Assert $failed "A saved hostname without successful Entra reconciliation must be rejected"
+    Assert ($state.deployments.Count -eq 2) "Incomplete registration must not start the real app"
+    & $initialize
+    $state.healthReady = $false
+    $failed = $false
+    try { & $deploy } catch { $failed = $true }
+    Assert $failed "HTTP 200 without ready status must not be accepted as successful deployment"
+    Write-Host "PASS: registration/trust, safe bootstrap, actual FQDN, reruns, final deployment, drift/partial-registration rejection and strict HTTPS readiness."
 } finally {
     $env:WEB_CLIENT_ID = $oldId
-    Remove-Item Function:\az, Function:\azd -ErrorAction SilentlyContinue
+    foreach ($name in $environment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $environment[$name])
+    }
+    Remove-Item Function:\az, Function:\azd, Function:\Invoke-WebRequest, Function:\Start-Sleep -ErrorAction SilentlyContinue
     Remove-Variable registrationMock -Scope Global
 }

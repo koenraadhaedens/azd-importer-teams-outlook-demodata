@@ -3,13 +3,14 @@ targetScope = 'resourceGroup'
 param location string = resourceGroup().location
 param containerGroupName string
 param dnsLabel string
-param publicHostname string
+param publicHostname string = ''
 param acmeEmail string
 param image string = loadJsonContent('../config/container-images.json').services.app.image
 param caddyImage string = loadJsonContent('../config/container-images.json').services.caddy.image
 param identityResourceId string
 param identityClientId string
-param webClientId string
+param webClientId string = ''
+param bootstrap bool = false
 param tenantId string = tenant().tenantId
 param journalBlobUrl string
 param operatorIds string
@@ -20,8 +21,45 @@ param allowExternalRecipients bool = false
 param logWorkspaceName string
 param certificateStorageName string
 
-var caddyConfig = loadTextContent('../Caddyfile')
+var bootstrapCaddyConfig = '''
+:80 {
+  respond "Deployment initialization in progress" 503
+}
+'''
+var caddyConfig = bootstrap ? bootstrapCaddyConfig : loadTextContent('../Caddyfile')
 var registryServers = union([split(image, '/')[0]], [split(caddyImage, '/')[0]])
+var applicationStartup = bootstrap
+  ? {
+      command: ['python', '-c', 'import time; time.sleep(2147483647)']
+    }
+  : {
+      // Explicitly reset the dormant bootstrap command when updating the same group.
+      command: [
+        'uvicorn'
+        'demo_loader.app:create_app'
+        '--factory'
+        '--host'
+        '0.0.0.0'
+        '--port'
+        '8000'
+        '--workers'
+        '1'
+        '--no-proxy-headers'
+        '--no-access-log'
+      ]
+      readinessProbe: {
+        exec: {
+          command: [
+            'python'
+            '-c'
+            'import urllib.request; r=urllib.request.Request("http://127.0.0.1:8000/healthz", headers={"Host":"${publicHostname}"}); urllib.request.urlopen(r,timeout=3)'
+          ]
+        }
+        periodSeconds: 30
+        timeoutSeconds: 5
+        initialDelaySeconds: 90
+      }
+    }
 
 resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
   name: logWorkspaceName
@@ -63,35 +101,26 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
     containers: [
       {
         name: 'app'
-        properties: {
-          image: image
-          resources: { requests: { cpu: 1, memoryInGB: json('1.5') } }
-          environmentVariables: [
-            { name: 'TENANT_ID', value: tenantId }
-            { name: 'WEB_CLIENT_ID', value: webClientId }
-            { name: 'PUBLIC_URL', value: 'https://${publicHostname}' }
-            { name: 'OPERATOR_IDS', value: operatorIds }
-            { name: 'AUTHORIZED_GROUP_ID', value: authorizedGroupId }
-            { name: 'DEMO_TENANT_CONFIRMED', value: 'true' }
-            { name: 'DELIVERY_ENABLED', value: string(deliveryEnabled) }
-            { name: 'MAILBOX_SCOPE_CONFIRMED', value: string(mailboxScopeConfirmed) }
-            { name: 'ALLOW_EXTERNAL_RECIPIENTS', value: string(allowExternalRecipients) }
-            { name: 'MANAGED_IDENTITY_CLIENT_ID', value: identityClientId }
-            { name: 'JOURNAL_BLOB_URL', value: journalBlobUrl }
-          ]
-          readinessProbe: {
-            exec: {
-              command: [
-                'python'
-                '-c'
-                'import urllib.request; r=urllib.request.Request("http://127.0.0.1:8000/healthz", headers={"Host":"${publicHostname}"}); urllib.request.urlopen(r,timeout=3)'
-              ]
-            }
-            periodSeconds: 30
-            timeoutSeconds: 5
-            initialDelaySeconds: 90
-          }
-        }
+        properties: union(
+          {
+            image: image
+            resources: { requests: { cpu: 1, memoryInGB: json('1.5') } }
+            environmentVariables: [
+              { name: 'TENANT_ID', value: tenantId }
+              { name: 'WEB_CLIENT_ID', value: webClientId }
+              { name: 'PUBLIC_URL', value: 'https://${publicHostname}' }
+              { name: 'OPERATOR_IDS', value: operatorIds }
+              { name: 'AUTHORIZED_GROUP_ID', value: authorizedGroupId }
+              { name: 'DEMO_TENANT_CONFIRMED', value: 'true' }
+              { name: 'DELIVERY_ENABLED', value: string(!bootstrap && deliveryEnabled) }
+              { name: 'MAILBOX_SCOPE_CONFIRMED', value: string(mailboxScopeConfirmed) }
+              { name: 'ALLOW_EXTERNAL_RECIPIENTS', value: string(allowExternalRecipients) }
+              { name: 'MANAGED_IDENTITY_CLIENT_ID', value: identityClientId }
+              { name: 'JOURNAL_BLOB_URL', value: journalBlobUrl }
+            ]
+          },
+          applicationStartup
+        )
       }
       {
         name: 'https'
@@ -130,5 +159,5 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
   }
 }
 
-output endpoint string = 'https://${publicHostname}'
+output endpoint string = bootstrap ? '' : 'https://${publicHostname}'
 output fqdn string = group.properties.ipAddress.fqdn

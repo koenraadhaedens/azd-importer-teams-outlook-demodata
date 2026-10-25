@@ -15,13 +15,19 @@ provide a web redirect URI or delegated user sign-in.
 ## Automatic registration during azd provisioning
 
 [azure.yaml](../azure.yaml) invokes
-[register-web-app.ps1](../scripts/register-web-app.ps1) as a **noninteractive
-postprovision hook**, after the user-assigned identity exists and before ACI
-deployment. Configure `PUBLIC_HOSTNAME` before provisioning. The hook:
+[initialize-web-endpoint.ps1](../scripts/initialize-web-endpoint.ps1) as a
+**noninteractive postprovision hook**, after the supporting resources exist.
+There is **no manual PUBLIC_HOSTNAME or custom DNS prerequisite**. The hook:
 
-1. Checks Azure CLI's tenant and the provisioned identity's tenant/principal.
-2. Creates or updates a dedicated single-tenant application.
-3. Derives URLs from `https://<PUBLIC_HOSTNAME>`:
+1. Creates the ACI group in initialization mode if it does not already exist:
+   the app is dormant, delivery is disabled, and Caddy returns HTTP 503 without
+   requesting a certificate. Both manually published images and registry pull
+   permission are needed already. Existing groups are not reset on reruns.
+2. Retrieves **ipAddress.fqdn** from Azure (never guesses from the DNS label),
+   saves PUBLIC_HOSTNAME/PUBLIC_URL, then invokes
+   [register-web-app.ps1](../scripts/register-web-app.ps1). That script checks the
+   CLI/managed-identity tenant and creates/updates a dedicated web registration.
+3. Derives URLs from the retrieved `https://<ACI-FQDN>`:
    - redirect: `/auth/callback`
    - home/post-logout return: `/`
    - front-channel logout: `/auth/signed-out`
@@ -33,8 +39,14 @@ deployment. Configure `PUBLIC_HOSTNAME` before provisioning. The hook:
    - audience: `api://AzureADTokenExchange`
 6. Creates the enterprise service principal with assignment required.
 7. Persists WEB_CLIENT_ID, WEB_APPLICATION_OBJECT_ID and
-   WEB_SERVICE_PRINCIPAL_ID with `azd env set`. The deploy hook explicitly reads
-   the saved client ID, including within the same `azd up`.
+   WEB_SERVICE_PRINCIPAL_ID with `azd env set`. Only after successful registration
+   does it save WEB_REGISTERED_HOSTNAME. The deploy hook explicitly reads
+   the saved client ID/hostname, including within the same `azd up`. It applies
+   the final app/Caddy configuration to the same group, explicitly starts the
+   real app, and verifies the certificate and application health. A discovered
+   hostname without a matching completed-registration marker cannot start the
+   final app. Caddy obtains
+   and renews the public certificate automatically via ACME.
 
 It creates **no client secret or certificate**, grants **no administrator
 consent**, and makes **no user/group assignments**. Those boundaries are
@@ -68,10 +80,10 @@ is missing the hook fails; it does not request interactive elevation.
 azd auth login
 az login
 azd env new my-demo-loader
-azd env set PUBLIC_HOSTNAME loader.your-controlled-domain.example
-# Configure other deployment settings from README; do not set a web secret.
+# Configure ACME_EMAIL and other settings from README; do not set hostname/secret.
 azd provision
 azd env get-value WEB_CLIENT_ID
+azd env get-value PUBLIC_URL
 ```
 
 Now an administrator must:
@@ -84,7 +96,10 @@ Now an administrator must:
 4. Grant the runtime identity direct application `User.Read.All` and configure
    the five-mailbox Exchange `Application Mail.Send` scope. Federation does not
    grant these permissions automatically.
-5. Grant registry pull access and configure DNS as described in README.
+5. Grant registry pull access as described in README. This is needed before
+   initialization can pull images: on a new environment the first provision may
+   stop at that hook until the newly created identity is authorized. Grant pull
+   using provision outputs, then rerun `azd provision`. No custom DNS is needed.
 
 The administrator-only helper remains available, **outside azd hooks**:
 
@@ -99,11 +114,15 @@ pwsh .\scripts\setup-entra.ps1 `
 It uses Microsoft.Graph.Applications and Microsoft.Graph.Identity.SignIns.
 Its sign-in is intentionally interactive/administrator-controlled. The
 registration hook does not invoke it.
-After those prerequisites, run `azd deploy` or `azd up`.
+After those prerequisites, run `azd deploy` or `azd up`. Initialization is not a
+successful application deployment; before final deployment it only serves a
+503 on port 80 and does not start the demo execution engine.
 
 ## Manual registration fallback and migration
 
-In Entra admin center create a dedicated **single-tenant Web** registration,
+If manually repairing an existing environment, obtain the saved PUBLIC_URL
+(`azd env get-value PUBLIC_URL`) or Azure's actual `ipAddress.fqdn`. In Entra
+admin center create a dedicated **single-tenant Web** registration,
 disable implicit/public-client grants, configure the exact HTTPS URLs above,
 request delegated `ChannelMessage.Send`, and emit SecurityGroup claims only if
 needed. Under Certificates & secrets > Federated credentials, select **Managed

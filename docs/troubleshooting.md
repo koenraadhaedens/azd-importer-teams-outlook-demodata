@@ -19,12 +19,13 @@
 | Federation/token exchange fails | Verify the web app's aci-managed-identity credential: same tenant, issuer ending /v2.0, subject equal to the identity principal ID (not client ID), audience api://AzureADTokenExchange. Allow propagation. No web secret or vault access is required. |
 | Registration hook 403 | Pre-authorize the separate deployment identity for Graph application management; Azure subscription Owner is insufficient. The hook will not prompt for login/consent or silently skip setup. |
 | Journal 503 | Stop competing instances; check Blob availability/ETag conflicts, account permissions and local disk. Restart after correcting cause, preserving journal. |
-| HTTPS unavailable | Check public DNS CNAME, CAA records, port 80/443 reachability, Caddy ACME logs and certificate-share mount. ACI has no native managed TLS. |
+| HTTPS unavailable | Check Azure's assigned FQDN resolves, ports 80/443, Caddy ACME logs/CA rate limits and certificate-share mount. Do not disable certificate verification. ACI has no native managed TLS. |
 | HTTPS works but app 502 | Check startup/config/consent failures in application logs; Caddy is only a reverse proxy, not readiness proof. |
 | ACI image pull fails | Confirm both images in config/container-images.json were manually pushed. Grant the runtime managed identity AcrPull on each standard RBAC registry (repository-reader access for ABAC registries), allow propagation and check registry networking. No registry password or automatic push is supplied. |
 | Source/configuration update not visible | Manually rebuild/push the app with its packaged user/resource files and update the configured release tag/digest. The deployment pipeline does not build images. Do not rely on overwriting an unchanged latest reference to refresh ACI. |
 | Localhost certificate warning | Caddy uses local CA; explicitly trust its root for test use. Do not use --insecure in ordinary operation. |
-| DNS label changed / deployment not ready | Read actual ACI FQDN from deployment/CLI and update CNAME. Rerun azd deploy after propagation. |
+| ACI hostname changed | Run azd provision to rediscover ipAddress.fqdn and update saved URLs/Entra, then azd deploy. No manual CNAME is needed. |
+| HTTP 503 initialization response | Expected before final deployment: the app is dormant and Caddy has not requested a certificate. Complete registration/admin grants then run azd deploy. A bootstrap group is not application readiness. |
 | azd reports no native services | Intentional: ACI uses predeploy hook. Use current azd and PowerShell 7; hooks must not be skipped. |
 | Azure CLI login absent despite azd login | Run az login too, or azure/login OIDC in CI. Hooks deliberately use Azure CLI. |
 | Key Vault name cannot be reused after down | Purge protection/soft deletion is intentional; recover or wait, do not weaken protection. |

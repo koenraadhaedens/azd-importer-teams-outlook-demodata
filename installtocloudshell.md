@@ -228,6 +228,103 @@ IDs, then return here after verifying scope.
 Continue with step 16 in this clean process; no return to the Graph session is
 needed.
 
+### Recovering from an existing Exchange scope after a fresh deployment
+
+Deleting the previous Azure resource group or running `azd down` does **not**
+delete tenant-level Entra app registrations, enterprise applications, Exchange
+service-principal registrations, management scopes, or role assignments.
+A new azd environment/resource group is therefore not a completely clean
+Microsoft 365 tenant.
+
+If step 15 reports that an existing management scope has the same filter and
+says **"Use the existing management scope instead of creating a new one"**:
+
+- Do not delete the existing scope or rerun the helper with its name. The helper
+  names assignments after the scope and does not verify an existing assignment's
+  principal, so that alone does not grant the new identity access.
+- Reuse the existing scope only if it selects exactly the configured five
+  mailboxes. The new runtime managed identity still needs its own Exchange
+  registration and `Application Mail.Send` assignment.
+- This error does not establish whether the web app registration was reused.
+  Check `azd env get-value WEB_CLIENT_ID`; Exchange uses the runtime identity IDs
+  below, not that web client ID.
+
+In the clean Exchange PowerShell process from step 14, select the intended
+environment with `azd env list` / `azd env select <name>` if necessary, then run:
+
+```powershell
+$ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
+$identityClientId = (azd env get-value AZURE_IDENTITY_CLIENT_ID).Trim()
+$identityPrincipalId = (azd env get-value AZURE_IDENTITY_PRINCIPAL_ID).Trim()
+$demoConfig = Get-Content -LiteralPath (Join-Path "config" "demo-users.json") -Raw |
+    ConvertFrom-Json
+$demoUpns = @($demoConfig.users | ForEach-Object { $_.userPrincipalName })
+$outOfScopeTestUpn = Read-Host "Sixth mailbox UPN, not one of the five demo users"
+$existingScopeName = Read-Host "Existing scope name reported by Exchange"
+
+Connect-ExchangeOnline -ShowBanner:$false
+$scope = Get-ManagementScope -Identity $existingScopeName
+$expected = @($demoUpns | ForEach-Object {
+    (Get-EXOMailbox -Identity $_).PrimarySmtpAddress.ToString().ToLowerInvariant()
+} | Sort-Object -Unique)
+$actual = @(Get-Recipient -RecipientPreviewFilter $scope.RecipientFilter -ResultSize Unlimited |
+    ForEach-Object { $_.PrimarySmtpAddress.ToString().ToLowerInvariant() } |
+    Sort-Object -Unique)
+if ($expected.Count -ne 5 -or $actual.Count -ne 5 -or
+    (Compare-Object -ReferenceObject $expected -DifferenceObject $actual)) {
+    throw "Existing scope does not select exactly the configured five mailboxes; stop for review."
+}
+if ($outOfScopeTestUpn -in $demoUpns) {
+    throw "The sixth test mailbox must not be a demo mailbox."
+}
+$null = Get-EXOMailbox -Identity $outOfScopeTestUpn
+
+# The failed helper registers the runtime principal before attempting scope creation.
+$principals = @(Get-ServicePrincipal | Where-Object { $_.AppId -eq $identityClientId })
+if ($principals.Count -ne 1 -or
+    [string]$principals[0].ObjectId -ne $identityPrincipalId) {
+    throw "Exchange registration does not match the selected runtime identity; stop for review."
+}
+
+$assignmentName = "DemoMailSend-$identityPrincipalId"
+if (Get-ManagementRoleAssignment -Identity $assignmentName -ErrorAction SilentlyContinue) {
+    throw "This assignment already exists. Inspect it and run the authorization tests below."
+}
+New-ManagementRoleAssignment `
+    -Name $assignmentName `
+    -App ([guid]$identityPrincipalId) `
+    -Role "Application Mail.Send" `
+    -CustomResourceScope $existingScopeName
+```
+
+For example, if the error names `demodeploy6-FiveMailboxes`, enter that exact
+existing name at the prompt, not the new environment's proposed scope name.
+Do not remove old assignments or registrations without confirming that they
+are retired and unused by other deployments.
+
+Then verify authorization for the **new** runtime identity:
+
+```powershell
+foreach ($upn in $demoUpns) {
+    Write-Host "Demo mailbox: $upn"
+    Test-ServicePrincipalAuthorization -Identity $identityPrincipalId -Resource $upn |
+        Format-Table
+}
+Write-Host "Excluded mailbox: $outOfScopeTestUpn"
+Test-ServicePrincipalAuthorization `
+    -Identity $identityPrincipalId `
+    -Resource $outOfScopeTestUpn |
+    Format-Table
+```
+
+Check `Application Mail.Send`: all five demo mailboxes must have `InScope = True`
+and the sixth must have `InScope = False`. Allow permission propagation and
+repeat the tests if needed. Review additive Exchange/Entra grants as in step 15.
+Do not set `MAILBOX_SCOPE_CONFIRMED=true` until verification succeeds.
+The Exchange grant itself needs no container rebuild or redeployment.
+Continue with step 16, keeping delivery disabled until the dry run and step 18.
+
 ## 16. Deploy with real delivery disabled
 
 ```powershell

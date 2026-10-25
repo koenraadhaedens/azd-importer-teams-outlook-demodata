@@ -310,6 +310,19 @@ remains dormant and Caddy returns HTTP 503 until final deployment.
    [setup-entra.ps1](scripts/setup-entra.ps1) with the generated WEB_CLIENT_ID, or
    the portal. Registration alone intentionally grants neither consent nor access.
 
+**Recreating a deleted deployment:** Exchange scopes and assignments, Entra app
+registrations, and enterprise applications are tenant-level objects; deleting
+the resource group or running `azd down` does not remove them. If Exchange reports
+that a scope has the same filter, do not recreate or blindly delete it. Reuse it
+only after verifying its exact five-mailbox membership, then grant the **new
+runtime managed identity** its own scoped `Application Mail.Send` assignment.
+The existing scope alone is not permission for the new identity. Follow the
+[Exchange recovery commands](installtocloudshell.md#recovering-from-an-existing-exchange-scope-after-a-fresh-deployment);
+verify five allowed mailboxes and one excluded mailbox before confirming scope.
+This error does not prove that the web app registration was reused:
+`WEB_CLIENT_ID` identifies the web app, while `AZURE_IDENTITY_CLIENT_ID` and
+`AZURE_IDENTITY_PRINCIPAL_ID` identify the runtime principal used for Exchange.
+
 For command-line assignments, read the five existing demo users from
 [config/demo-users.json](config/demo-users.json), rather than maintaining a
 separate UPN list. PowerShell's JSON reader is built in; no converter module is
@@ -573,9 +586,13 @@ deleted with it. Back up the journal before teardown if replay evidence matters.
 The pre-existing registry and manually published images are not deleted. Remove
 the retired managed identity's registry-role assignment separately if necessary.
 Purge-protected Key Vault remains recoverable for seven days; names cannot be
-immediately reused. App registrations, consent, Exchange assignments, federated
+immediately reused. App registrations, consent, enterprise applications, Exchange
+service-principal registrations, management scopes and role assignments, federated
 pipeline identities are **tenant-level/external resources**, not
 removed by azd down. Remove them using [operations](docs/operations.md).
+If reinstalling into the same tenant, follow the
+[Exchange recovery guidance](installtocloudshell.md#recovering-from-an-existing-exchange-scope-after-a-fresh-deployment)
+instead of assuming a new resource group resets Microsoft 365 permissions.
 
 ## Security warnings and known limitations
 

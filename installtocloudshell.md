@@ -4,8 +4,12 @@ Open **PowerShell** in [Azure Cloud Shell](https://shell.azure.com/).
 Tools and Azure CLI sign-in are assumed to be available.
 
 This is a **fresh installation** using your already-published app image.
-Copy **one snippet at a time**, wait for completion, and stop on errors.
-Keep the same shell open except when step 14 starts a clean Exchange session.
+This walkthrough enables **real delivery** at deployment after mailbox-scope
+verification. Running a reviewed executable scenario can send real demo mail
+and Teams posts; inspect its dry run before explicitly starting execution.
+Copy **one snippet at a time** and wait for completion. Resolve any reported
+errors before continuing.
+Keep the same shell open except when step 11 starts a clean Exchange session.
 
 Before starting:
 
@@ -26,14 +30,7 @@ Set-Location azd-importer-teams-outlook-demodata
 
 If you already have the checkout, enter that folder instead of cloning again.
 
-## 2. Stop on command errors
-
-```powershell
-$ErrorActionPreference = "Stop"
-$PSNativeCommandUseErrorActionPreference = $true
-```
-
-## 3. Sign in to azd
+## 2. Sign in to azd
 
 Complete the sign-in with your CDX deployment account. Azure CLI and azd have
 separate authentication.
@@ -42,27 +39,22 @@ separate authentication.
 azd auth login --use-device-code
 ```
 
-## 4. Create an environment
-
-Choose a new environment name when prompted.
-
-```powershell
-azd env new
-```
-
-## 5. Save the demo settings
+## 3. Prepare the demo settings
 
 Only confirm this after verifying you are using the isolated CDX tenant.
 Enter an email address for HTTPS certificate notices.
+These process environment variables supply the provisioning hooks without
+creating an azd environment yet. Keep this shell open through provisioning;
+the settings are saved to the new azd environment afterward.
 
 ```powershell
-azd env set DEMO_TENANT_CONFIRMED true
-azd env set ACME_EMAIL (Read-Host "Email for certificate notices")
-azd env set DELIVERY_ENABLED false
-azd env set MAILBOX_SCOPE_CONFIRMED false
+$env:DEMO_TENANT_CONFIRMED = "true"
+$env:ACME_EMAIL = Read-Host "Email for certificate notices"
+$env:DELIVERY_ENABLED = "true"
+$env:MAILBOX_SCOPE_CONFIRMED = "false"
 ```
 
-## 6. Set yourself as the operator
+## 4. Set yourself as the operator
 
 ```powershell
 $operatorId = az ad signed-in-user show --query id --output tsv
@@ -70,24 +62,15 @@ if ([string]::IsNullOrWhiteSpace($operatorId)) {
     throw "Could not resolve the signed-in operator."
 }
 $operatorId = $operatorId.Trim()
-azd env set OPERATOR_IDS $operatorId
+$env:OPERATOR_IDS = $operatorId
 ```
 
-## 7. Check the published images
+## 5. Provision
 
-```powershell
-Get-Content -LiteralPath (Join-Path "config" "container-images.json")
-```
-
-The app should be `acrdefcontainer.azurecr.io/azd-m365-demo-loader:latest`,
-and Caddy should be `acrdefcontainer.azurecr.io/caddy:2.11.4-alpine`.
-No build or push is performed in Cloud Shell.
-
-## 8. Provision
-
-Select your **subscription and location when azd prompts**; there is no need to
-set them manually beforehand. Azure CLI must also be authenticated in the same
-target tenant/subscription because the hooks use it.
+For a fresh checkout with no selected environment, enter a new **environment
+name** when `azd provision` prompts. Select your **subscription and location**
+when prompted too; there is no separate `azd env new` step. Azure CLI must also
+be authenticated in the same target tenant/subscription because the hooks use it.
 
 ```powershell
 azd provision
@@ -98,7 +81,18 @@ grant, public hostname, and secretless web registration.
 The app is intentionally dormant until the administrator steps below are done.
 Do not use `azd up` to skip those steps.
 
-## 9. Read the generated IDs
+After provisioning succeeds, save the prepared settings to the selected azd
+environment so they remain available to later commands and new shell sessions:
+
+```powershell
+azd env set DEMO_TENANT_CONFIRMED $env:DEMO_TENANT_CONFIRMED
+azd env set ACME_EMAIL $env:ACME_EMAIL
+azd env set DELIVERY_ENABLED $env:DELIVERY_ENABLED
+azd env set MAILBOX_SCOPE_CONFIRMED $env:MAILBOX_SCOPE_CONFIRMED
+azd env set OPERATOR_IDS $env:OPERATOR_IDS
+```
+
+## 6. Read the generated IDs
 
 ```powershell
 $webClientId = azd env get-value WEB_CLIENT_ID
@@ -107,7 +101,7 @@ $identityPrincipalId = azd env get-value AZURE_IDENTITY_PRINCIPAL_ID
 $environmentName = azd env get-value AZURE_ENV_NAME
 ```
 
-## 10. Read the five configured demo users
+## 7. Read the five configured demo users
 
 These must match the users packaged in the published image. Editing the
 checkout does not update that image.
@@ -124,7 +118,7 @@ if ($demoUpns.Count -ne 5 -or
 $demoUpns
 ```
 
-## 11. Install the administrator modules
+## 8. Install the administrator modules
 
 These are additional modules used by the permission helpers, not Cloud Shell
 deployment prerequisites.
@@ -135,7 +129,7 @@ Install-Module Microsoft.Graph.Identity.SignIns -Scope CurrentUser -Force
 Install-Module ExchangeOnlineManagement -Scope CurrentUser -Force
 ```
 
-## 12. Resolve the users for application access
+## 9. Resolve the users for application access
 
 ```powershell
 $allowedIds = @($operatorId)
@@ -149,7 +143,7 @@ foreach ($upn in $demoUpns) {
 $allowedIds = @($allowedIds | Sort-Object -Unique)
 ```
 
-## 13. Assign users and grant Teams consent
+## 10. Assign users and grant Teams consent
 
 Complete the helper's sign-in as an authorized administrator **in the CDX tenant**.
 This assigns the operator and five demo users and grants delegated
@@ -168,7 +162,7 @@ find the application by `$webClientId`, grant admin consent under
 users under **Enterprise applications > Users and groups**.
 Keep **Assignment required = Yes**.
 
-## 14. Start a clean PowerShell process for Exchange
+## 11. Start a clean PowerShell process for Exchange
 
 Graph and Exchange modules can load incompatible versions of shared assemblies.
 After Graph setup, start a separate process so Exchange does not reuse those
@@ -184,8 +178,6 @@ PowerShell variables. Do not load Microsoft Graph modules in this new process.
 Reload the selected environment's runtime identity IDs and mailbox list:
 
 ```powershell
-$ErrorActionPreference = "Stop"
-$PSNativeCommandUseErrorActionPreference = $true
 $identityClientId = azd env get-value AZURE_IDENTITY_CLIENT_ID
 $identityPrincipalId = azd env get-value AZURE_IDENTITY_PRINCIPAL_ID
 $environmentName = azd env get-value AZURE_ENV_NAME
@@ -200,9 +192,9 @@ Enter an existing sixth mailbox that is **not** one of the five demo users:
 $outOfScopeTestUpn = Read-Host "Sixth mailbox UPN for the out-of-scope test"
 ```
 
-## 15. Configure Exchange mailbox scope
+## 12. Configure Exchange mailbox scope
 
-Run in the clean process from step 14. Complete sign-in as your CDX Exchange
+Run in the clean process from step 11. Complete sign-in as your CDX Exchange
 administrator. These parameters use the **runtime managed identity**, not the
 web application.
 
@@ -225,7 +217,7 @@ If Exchange sign-in is unavailable in Cloud Shell, run this helper from a
 PowerShell 7 administrator workstation with the same configuration and identity
 IDs, then return here after verifying scope.
 
-Continue with step 16 in this clean process; no return to the Graph session is
+Continue with step 13 in this clean process; no return to the Graph session is
 needed.
 
 ### Recovering from an existing Exchange scope after a fresh deployment
@@ -236,7 +228,7 @@ service-principal registrations, management scopes, or role assignments.
 A new azd environment/resource group is therefore not a completely clean
 Microsoft 365 tenant.
 
-If step 15 reports that an existing management scope has the same filter and
+If step 12 reports that an existing management scope has the same filter and
 says **"Use the existing management scope instead of creating a new one"**:
 
 - Do not delete the existing scope or rerun the helper with its name. The helper
@@ -249,12 +241,10 @@ says **"Use the existing management scope instead of creating a new one"**:
   Check `azd env get-value WEB_CLIENT_ID`; Exchange uses the runtime identity IDs
   below, not that web client ID.
 
-In the clean Exchange PowerShell process from step 14, select the intended
+In the clean Exchange PowerShell process from step 11, select the intended
 environment with `azd env list` / `azd env select <name>` if necessary, then run:
 
 ```powershell
-$ErrorActionPreference = "Stop"
-$PSNativeCommandUseErrorActionPreference = $true
 $identityClientId = (azd env get-value AZURE_IDENTITY_CLIENT_ID).Trim()
 $identityPrincipalId = (azd env get-value AZURE_IDENTITY_PRINCIPAL_ID).Trim()
 $demoConfig = Get-Content -LiteralPath (Join-Path "config" "demo-users.json") -Raw |
@@ -320,20 +310,26 @@ Test-ServicePrincipalAuthorization `
 
 Check `Application Mail.Send`: all five demo mailboxes must have `InScope = True`
 and the sixth must have `InScope = False`. Allow permission propagation and
-repeat the tests if needed. Review additive Exchange/Entra grants as in step 15.
+repeat the tests if needed. Review additive Exchange/Entra grants as in step 12.
 Do not set `MAILBOX_SCOPE_CONFIRMED=true` until verification succeeds.
 The Exchange grant itself needs no container rebuild or redeployment.
-Continue with step 16, keeping delivery disabled until the dry run and step 18.
+Continue with step 13 only after the mailbox authorization checks succeed.
 
-## 16. Deploy with real delivery disabled
+## 13. Deploy the application
+
+Only continue after step 12 confirms the five allowed mailboxes and the excluded
+sixth mailbox. Real delivery is enabled for this installation; this does not
+automatically execute any scenario.
 
 ```powershell
+azd env set MAILBOX_SCOPE_CONFIRMED true
+azd env set DELIVERY_ENABLED true
 azd deploy
 ```
 
 Wait for deployment, certificate issuance, and HTTPS readiness to succeed.
 
-## 17. Open the application
+## 14. Open the application
 
 ```powershell
 azd env get-value PUBLIC_URL
@@ -341,23 +337,10 @@ azd env get-value PUBLIC_URL
 
 Open the displayed URL, sign in as the operator, verify the resolved
 users/resources, and inspect a **successful dry run**.
+Scenarios marked `dryRun: true` remain non-executable. To send real demo content,
+use a reviewed scenario deliberately marked `dryRun: false`, preview it, and
+explicitly confirm execution as the operator.
 Each Teams author signs in separately to execute their own actions.
-
-## 18. Optional: enable real delivery
-
-Only do this after verifying mailbox scope and the dry run. This permits real
-mail and Teams posts in the demo tenant.
-
-```powershell
-azd env set MAILBOX_SCOPE_CONFIRMED true
-azd env set DELIVERY_ENABLED true
-```
-
-Apply the settings:
-
-```powershell
-azd deploy
-```
 
 ## If deployment fails
 

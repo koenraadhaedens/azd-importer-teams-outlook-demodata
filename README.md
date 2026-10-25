@@ -41,8 +41,10 @@ and WAF/private networking options see [architecture](docs/architecture.md).
 
 - Azure subscription with ACI, storage, Key Vault and role-assignment rights,
   plus access to the existing private container registry.
-- Azure CLI (`az`), Azure Developer CLI (`azd`), **PowerShell 7**, and Bicep
-  (`az bicep install`). Azure CLI must be authenticated separately from azd.
+- Azure CLI (`az`), Azure Developer CLI (`azd`), and **PowerShell 7**. The
+  preprovision hook checks Bicep and runs `az bicep install` if it is unavailable;
+  this needs outbound download access and a writable Azure CLI configuration
+  directory, not sudo. Azure CLI must be authenticated separately from azd.
 - Python 3.12+ for local development; Linux Docker engine for builds/checks.
 - Isolated CDX demo tenant with five licensed, mailbox-enabled users. All Teams
   authors must be members of the mapped existing team/channel.
@@ -174,6 +176,35 @@ azd env set ACME_EMAIL your-admin-mailbox@example.org
 azd env set OPERATOR_IDS '["<your-operator-object-id>"]'
 # Ensure AZURE_TENANT_ID targets the CDX tenant; azd prompts for subscription.
 ```
+
+### Azure portal Cloud Shell (PowerShell)
+
+Select **PowerShell** in Cloud Shell. Deployment needs neither a local Python
+environment nor Docker; both images must already be published in the configured
+registry. Cloud Shell's Azure CLI is normally authenticated by the portal.
+Confirm its tenant/subscription with `az account show`; switch to the intended
+subscription with `az account set --subscription <subscription-id>` if necessary.
+Authenticate azd if prompted; its authentication is separate from Azure CLI.
+
+For the already cloned repository and existing `demoimport` environment:
+
+```powershell
+azd env select demoimport
+azd env set AZURE_LOCATION westeurope
+# Only after confirming this is the isolated CDX tenant:
+azd env set DEMO_TENANT_CONFIRMED true
+azd env set ACME_EMAIL your-admin-mailbox@example.org
+azd env set OPERATOR_IDS '["<your-operator-object-id>"]'
+azd provision
+```
+
+Replace the mailbox and operator object ID with real values. The hook installs
+missing Bicep automatically and reuses it on subsequent runs. If running an older
+checkout that still reports "Bicep CLI not found", run `az bicep install` manually
+and retry `azd provision`. A fresh, non-persistent Cloud Shell session may require
+cloning again and recreating its azd environment; keep credentials out of Git.
+
+### First provision and administrator bootstrap
 
 1. Pre-authorize the **deployment identity** for application registration in
    Entra as described in [Entra setup](docs/entra-setup.md). Do not grant

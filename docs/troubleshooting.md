@@ -2,6 +2,7 @@
 
 | Symptom | Investigation / fix |
 |---|---|
+| Cloud Shell preprovision reports Bicep CLI not found | The current hook installs missing Bicep with az bicep install. On an older checkout, run that command manually and retry azd provision. Installation needs download access and a writable Azure CLI configuration directory. A failed install or verification stops provisioning explicitly; check bicep.use_binary_from_path if an installed binary is not found. |
 | Startup refuses tenant/operator configuration | Fill tenant/web IDs; confirm isolated CDX explicitly; configure operator IDs or a direct security group. No auth bypass exists. |
 | User resolution 403 | Explicitly assign Graph application User.Read.All to the **runtime** principal; managed identity alone is insufficient. Allow consent propagation. |
 | A configured UPN is not found | Replace sample UPNs with real CDX users, verify tenant and license, check exact UPN rather than SMTP alias. |

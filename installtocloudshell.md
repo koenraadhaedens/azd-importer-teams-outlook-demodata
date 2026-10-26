@@ -19,7 +19,15 @@ Before starting:
 - The published app must contain your correct five users and Teams mappings.
   The checkout used below must contain the same configuration.
 - Both images in [container-images.json](config/container-images.json) must be
-  published and anonymously pullable.
+  published and anonymously pullable, including the exact configured tags.
+  Building locally or pushing only `:latest` does not publish another tag such
+  as `:20261026-background-teams`.
+
+Public ACR images do **not** require registry credentials, `az acr login`, or an
+`AcrPull` grant for the runtime identity. Leave
+`USE_MANAGED_IDENTITY_FOR_IMAGE_PULL` unset (the default) or false.
+`azd env get-value USE_MANAGED_IDENTITY_FOR_IMAGE_PULL` reporting "key not found"
+is expected when unset; it is not a deployment error.
 
 Provisioning creates the resource group and runtime managed identity; deployment
 adds the ACI container group. No Key Vault, Log Analytics workspace or storage
@@ -319,12 +327,33 @@ The application stores no access or refresh tokens on disk.
 
 ## If deployment fails
 
+If the hook shows only `Azure CLI operation failed: deployment`, retrieve the
+recorded Azure error before retrying. The generic summary is not evidence that
+registry authentication is required.
+
 Get the resource names:
 
 ```powershell
 $resourceGroup = azd env get-value AZURE_RESOURCE_GROUP
 $aciName = azd env get-value ACI_NAME
 ```
+
+Read the deployment and failed-operation errors without redeploying:
+
+```powershell
+az deployment group show --resource-group $resourceGroup --name aci-app `
+    --query properties.error --output json
+az deployment operation group list --resource-group $resourceGroup --name aci-app `
+    --query "[?properties.provisioningState=='Failed'].properties.statusMessage" --output json
+```
+
+For `InaccessibleImage`, compare the **exact** image reference in the error with
+[container-images.json](config/container-images.json). Public access does not
+make a missing tag available. For example, if Azure requests
+`acrdefcontainer.azurecr.io/azd-m365-demo-loader:20261026-background-teams`,
+pushing only `acrdefcontainer.azurecr.io/azd-m365-demo-loader:latest` is not enough.
+Publish the requested tag from the Docker build workstation, then retry
+`azd deploy`. Do not add registry credentials to fix a missing public tag.
 
 Read the application logs:
 
@@ -354,6 +383,26 @@ Before redeploying, change the app image in
 [container-images.json](config/container-images.json) to a newly published
 unique tag or digest. Reusing unchanged `:latest` does not reliably refresh ACI.
 See [update instructions](README.md#updating-an-installed-environment).
+
+On the **Docker build workstation**, build and push the exact configured app
+reference (not just `:latest`):
+
+```powershell
+$images = Get-Content -LiteralPath (Join-Path "config" "container-images.json") -Raw |
+    ConvertFrom-Json
+docker build --platform linux/amd64 -t $images.services.app.image .
+if ($LASTEXITCODE -ne 0) { throw "App image build failed; do not deploy." }
+docker push $images.services.app.image
+if ($LASTEXITCODE -ne 0) { throw "App image push failed; do not deploy." }
+```
+
+Your build workstation may need publisher authentication for `docker push`;
+this is separate from ACI's anonymous pull and requires no runtime credentials.
+If the assistant already built that exact local tag, only the push is needed.
+Then return to **Cloud Shell** and ensure its
+[container-images.json](config/container-images.json) contains the same pushed
+reference before running the deployment below. `azd deploy` does not build,
+push, or create missing image tags.
 
 Export reports first: ACI updates can erase the temporary journal and
 duplicate-send protection. Review prior sends before running scenarios again.

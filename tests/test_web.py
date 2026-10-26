@@ -112,10 +112,7 @@ def test_upload_boundary(
 def test_csrf_origin(client: TestClient, settings: Settings, origin: str) -> None:
     csrf = sign_in(client, str(settings.operator_ids[0]), str(settings.tenant_id))
     assert (
-        client.post(
-            "/logout", data={"csrf": csrf}, headers={"Origin": origin}
-        ).status_code
-        == 403
+        client.post("/logout", data={"csrf": csrf}, headers={"Origin": origin}).status_code == 403
     )
 
 
@@ -236,8 +233,8 @@ def test_run_controls_match_assigned_teams_activities(
     csrf = sign_in(client, fake.ids[users[user_index]], str(settings.tenant_id))
     page = client.get(f"/runs/{run_id}")
     assert page.status_code == 200
-    assert ("Execute my ready Teams activities as myself" in page.text) == show_button
-    assert ("After a cross-user dependency completes" in page.text) == include_teams
+    assert ("Start / resume my background Teams messages" in page.text) == show_button
+    assert ("Each Teams author signs in and starts" in page.text) == include_teams
     assert ("This scenario contains only email activities" in page.text) == (not include_teams)
     assert "Cancellation affects only not-yet-started work" in page.text
     if not show_button:

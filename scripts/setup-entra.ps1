@@ -36,11 +36,13 @@ if ($GrantConsent) {
     if (-not $grant) {
         New-MgOauth2PermissionGrant -BodyParameter @{
             ClientId = $sp.Id; ResourceId = $graph.Id
-            ConsentType = "AllPrincipals"; Scope = "ChannelMessage.Send"
+            ConsentType = "AllPrincipals"; Scope = "ChannelMessage.Send offline_access"
         } | Out-Null
-    } elseif ("ChannelMessage.Send" -notin ($grant.Scope -split " ")) {
+    } elseif ("ChannelMessage.Send" -notin ($grant.Scope -split " ") -or
+        "offline_access" -notin ($grant.Scope -split " ")) {
         Update-MgOauth2PermissionGrant -OAuth2PermissionGrantId $grant.Id -Scope (
-            (($grant.Scope -split " ") + "ChannelMessage.Send" | Sort-Object -Unique) -join " "
+            (($grant.Scope -split " ") + @("ChannelMessage.Send", "offline_access") |
+                Sort-Object -Unique) -join " "
         )
     }
 }

@@ -49,8 +49,13 @@ No historical sent times are supported; a delay schedules future real delivery.
 `type: teamsReply` additionally requires `parent`, naming an earlier root
 teamsMessage in the **same channel**, also listed in `dependsOn`.
 Replies to replies, chats, bots, migration operations and impersonation are not
-implemented. Each author must authenticate interactively and trigger their batch.
-There is no promise of unattended completion across users or application restart.
+implemented. Each author must authenticate interactively and authorize their
+background messages once for the started run. Authorized workers wait across
+cross-user dependencies and continue with browsers closed, renewing tokens in
+server memory before sends. Interaction requirements pause the author for
+sign-in; permission or Graph failures can prevent completion. Workers and tokens
+do not survive application restart. Explicit logout revokes that session's future
+sends; operator cancellation stops pending work for the run.
 
 ## Placeholders
 

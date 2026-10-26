@@ -170,13 +170,27 @@ those role grants scoped/reviewed independently from web-app delegated consent.
 
 MSAL validates state/nonce/ID-token identity. The app additionally validates
 tenant/object authorization. Opaque session cookies are Secure/HttpOnly/
-SameSite=Lax; tokens remain in server memory, with sessions expiring within an
-hour. No offline refresh-token persistence is requested. Restart requires sign-in.
+SameSite=Lax; browser sessions expire within an hour. MSAL requests
+`offline_access` and keeps access/refresh tokens in server memory only.
+The administrator consent helper grants `ChannelMessage.Send offline_access`.
+After updating an older deployment, rerun its reviewed consent setup and have
+authors sign in again before starting background Teams workers.
+
+Clicking **Start / resume my background Teams messages** authorizes that user's
+pending activities for one started run, including cross-user dependencies.
+The worker retains the session cache beyond browser cookie expiry until it
+finishes, pauses for sign-in, is cancelled or the process stops. Silent renewal
+runs before each send, not just before a potentially long delay. Closing a browser
+does not stop the worker; token revocation or interaction requirements pause it
+with pending steps intact. No tokens are persisted. Restart requires sign-in and
+run resumption; interrupted Graph sends remain unknown and are not replayed.
 
 Explicit CSRF-protected POST `/logout` clears the session and redirects to the
-tenant logout endpoint. Front-channel `/auth/signed-out` performs best-effort
-local invalidation; third-party-cookie restrictions may prevent that callback
-from including the cookie, so session expiry remains necessary.
+tenant logout endpoint. It also revokes future Teams sends authorized by that
+session; in-flight Graph requests cannot be recalled. Front-channel
+`/auth/signed-out` performs best-effort local invalidation and revocation;
+third-party-cookie restrictions may prevent it from including the cookie.
+Cancel a run as the operator to stop all not-yet-started work.
 
 ## Revocation and teardown
 

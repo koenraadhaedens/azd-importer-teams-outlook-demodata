@@ -80,7 +80,13 @@ optional Blob backend remains available for custom deployments, but default ACI
 explicitly sets JOURNAL_BLOB_URL empty and does not provision Azure Storage.
 
 Tokens are not in the journal. MSAL session caches and delegated tokens are
-memory-only. Blob content includes pending bodies; reports and audit records
+memory-only. Author-scoped background workers retain authorized session caches
+while waiting across dependencies, independently of cookie expiry, and request
+current tokens immediately before sending. Refresh capability uses `offline_access`;
+interaction requirements pause the author with pending steps intact. Closing a
+browser does not stop work. Explicit logout revokes that session's future sends;
+cancellation stops pending work for a run. Workers/tokens are lost on restart.
+Blob content includes pending bodies; reports and audit records
 exclude them. Retirement clears scenario content but retains fingerprint,
 scenario ID, step results and tombstones.
 

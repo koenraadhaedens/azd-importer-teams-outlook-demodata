@@ -24,6 +24,12 @@ if (progress) {
           Array.from(states).filter((state) => state.textContent === cell.dataset.status).length
         );
       }
+      for (const [user, state] of Object.entries(report.background.teams)) {
+        const worker = document.querySelector(`[data-teams-worker="${CSS.escape(user)}"]`);
+        if (worker) worker.textContent = state;
+      }
+      const emailWorker = document.querySelector("[data-email-worker]");
+      if (emailWorker) emailWorker.textContent = report.background.email;
       progress.textContent = "Status updated. Reload to see newly available execution controls.";
     } catch {
       progress.textContent = "Network error refreshing status. Reload to retry.";

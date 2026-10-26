@@ -306,7 +306,16 @@ users/resources, and inspect a **successful dry run**.
 Scenarios marked `dryRun: true` remain non-executable. To send real demo content,
 use a reviewed scenario deliberately marked `dryRun: false`, preview it, and
 explicitly confirm execution as the operator.
-Each Teams author signs in separately to execute their own actions.
+Each Teams author signs in separately in an isolated browser session and clicks
+**Start / resume my background Teams messages** once for the run. Afterward the
+browser can close; workers wait for dependencies and renew tokens in server
+memory. Do not sign out while expecting that session's future sends to continue.
+If Microsoft requires sign-in again, the author resumes the same run.
+After a container restart, the operator and unfinished authors must resume.
+
+When upgrading an older image, repeat the administrator-reviewed Teams consent
+setup in step 10 to include `offline_access`, then have authors sign in again.
+The application stores no access or refresh tokens on disk.
 
 ## If deployment fails
 

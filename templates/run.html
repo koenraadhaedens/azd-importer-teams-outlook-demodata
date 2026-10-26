@@ -36,15 +36,27 @@
   {% if has_my_teams and run.started and not run.cancelled and not run.retired %}
   <form method="post" action="/runs/{{ run.id }}/teams">
     <input type="hidden" name="csrf" value="{{ session.csrf }}">
-    <button>Execute my ready Teams activities as myself</button>
+    <p>Authorize all my pending Teams activities for this run. They continue on the server
+      with the browser closed, including messages waiting for other authors.
+      Tokens renew in server memory; Microsoft may require sign-in again.
+      Signing out revokes future sends authorized by this session.</p>
+    <button>Start / resume my background Teams messages</button>
   </form>
   {% elif has_teams and demo_user and not has_my_teams %}
   <p>No Teams activities are assigned to your signed-in user in this scenario.</p>
   {% endif %}
   {% if has_teams %}
-  <p>After a cross-user dependency completes, sign in as the next user and click again.
-    Operators resume email steps that were waiting for Teams.</p>
+  <p>Each Teams author signs in and starts their background messages once per run.
+    Authorized authors wait automatically for dependencies; the email worker also
+    resumes after Teams steps. You can close the browser after starting.
+    Container restarts stop background work and require authorization again.</p>
+  <ul aria-label="Background Teams workers">
+    {% for user, state in background.teams.items() %}
+    <li><code>{{ user }}</code>: <strong data-teams-worker="{{ user }}">{{ state }}</strong></li>
+    {% endfor %}
+  </ul>
   {% endif %}
+  <p>Email worker: <strong data-email-worker>{{ background.email }}</strong></p>
   <p>Delays start after dependencies finish (or run start for roots).
     Cancellation affects only not-yet-started work.</p>
   {% if operator %}

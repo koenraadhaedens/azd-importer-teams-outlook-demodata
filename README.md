@@ -545,9 +545,13 @@ mechanism is assumed: attach these as context where import is unavailable.
 5. Run the no-write dry-run and download the report.
 6. Examples are `dryRun: true`; they cannot execute. For a real reviewed run,
    create a new scenario ID and deliberately set `dryRun: false` before upload.
-7. Confirm real delivery; operator starts/resumes ready app-email actions.
-8. Sign out/switch identity for each assigned Teams author and execute their
-   ready batch. Revisit after dependencies finish; then operator resumes mail.
+7. Confirm real delivery; operator starts/resumes the background email worker.
+8. Each assigned Teams author signs in using an isolated browser session and
+   clicks **Start / resume my background Teams messages** once for the run.
+   Workers continue with browsers closed and automatically wait for cross-user
+   dependencies, including email steps waiting for Teams. Signing out revokes
+   future sends authorized by that session; close the browser instead.
+   If renewal requires interaction, sign in and resume the same run.
 9. Cancel future actions if needed. Review failures/unknown outcomes manually.
 10. Retire completed/cancelled content to remove bodies while retaining replay
     protection. Reports contain statuses, IDs and fixed errors, not message bodies.
@@ -572,6 +576,7 @@ az bicep build --file infra\aci.bicep --stdout
 pwsh .\scripts\check-powershell.ps1
 pwsh .\tests\infrastructure.tests.ps1
 pwsh .\tests\exchange.tests.ps1
+pwsh .\tests\consent.tests.ps1
 docker build -t azd-m365-demo-loader:check .
 pwsh .\scripts\smoke-container.ps1 -Image azd-m365-demo-loader:check -CaddyImage caddy:2.11.4-alpine
 ```
@@ -612,8 +617,11 @@ instead of assuming a new resource group resets Microsoft 365 permissions.
   fictional data and retire content. ACI lifecycle changes can erase the journal,
   including tombstones and duplicate-send protection; export reports and review
   prior sends before running scenarios after storage loss.
-- Sessions/delegated tokens live only in server memory, expire within an hour,
-  are not refreshed offline, and are lost on restart.
+- Browser sessions expire within an hour. Explicitly authorized Teams workers
+  retain memory-only access/refresh tokens while active, independently of cookie
+  expiry, and renew before sends using `offline_access`. Interaction requirements
+  pause an author; logout revokes that session's future sends. Restart loses
+  workers/tokens and requires operator resumption and author authorization again.
 - Explicit group claims only; group overage fails closed. No group-wide Graph
   membership-read permission is requested.
 - External recipients are blocked unless an administrator explicitly enables

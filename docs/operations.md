@@ -10,15 +10,42 @@ planned Graph operation before approving a new executable scenario.
 
 ## Execution, retries and reports
 
-An operator starts/resumes email batches. Each Teams author signs in separately,
-executes ready activities as themselves, then signs out. Revisit after cross-user
-dependencies finish. Resume email after Teams if needed; repeated clicks reuse
-the same run and do not replay completed/failed/unknown steps.
+An operator starts the run and its background email worker. Each Teams author
+signs in separately and clicks **Start / resume my background Teams messages**
+once for that run. This authorizes all of that author's pending Teams activities,
+not just the currently ready ones. Workers wait on dependencies and delays and
+wake automatically as other users' activities finish. The email worker also
+waits for Teams dependencies. Repeated clicks do not replay completed steps.
+
+Browsers can be closed after authorization. Use isolated browser profiles for
+parallel author sign-ins: incognito windows in the same browser can share cookies.
+Do not sign out to switch authors while expecting that session's background work
+to continue: explicit sign-out revokes future sends authorized by that session.
+Operator cancellation stops future work for the whole run.
+
+Before each Teams send, MSAL obtains a current access token from its memory-only
+cache, using a refresh token when necessary. Sign-in requests `offline_access`;
+existing users must sign in again with the updated consent. A run-author worker
+retains its session cache independently of the browser cookie's one-hour expiry,
+only while that worker is active. Tokens are never written to the journal.
+The run page/report shows background worker states, including
+`waiting_for_dependencies`, `authorization_required`, `reauthentication_required`
+and `failed`. The page refreshes those states, but keeping it open is unnecessary.
+If silent renewal requires interaction, that author's worker pauses with pending
+steps intact and a visible sign-in instruction. Sign in and authorize the same
+run again; other authors can remain waiting. Failed/unknown Graph sends are not
+automatically replayed. Microsoft revocation, Conditional Access, network or
+permission failures can still prevent completion.
+
+Background work is not restart-durable. After an app/container restart, the
+operator must resume the run and each unfinished Teams author must authorize it
+again. Preserve completed-step records; never create a new run just to retry
+unknown remote outcomes.
 
 Email-only scenarios do not require individual mailbox-owner sign-ins. The run
 page hides Teams controls and cross-user Teams instructions for those scenarios.
 For mixed scenarios, only users with assigned Teams activities see the Teams
-execution button; posting to that endpoint without assigned Teams work returns
+background authorization button; posting without assigned Teams work returns
 an explicit error before acquiring a delegated token.
 
 Status: pending, running, success, failed, unknown, cancelled, skipped.

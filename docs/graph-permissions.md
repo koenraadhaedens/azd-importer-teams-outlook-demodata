@@ -9,10 +9,14 @@ requested. Azure RBAC/managed identity does **not** imply Graph permission.
 | Send demo email | `POST /users/{resolved-id}/sendMail` | Exchange `Application Mail.Send`, runtime principal, five-mailbox custom resource scope |
 | Channel root message | `POST /teams/{team}/channels/{channel}/messages` | Delegated `ChannelMessage.Send`, interactive web app |
 | Channel reply | `POST /teams/{team}/channels/{channel}/messages/{parent}/replies` | Delegated `ChannelMessage.Send`, interactive web app |
-| Sign-in | tenant-specific authorize/token endpoints | OIDC `openid`, `profile`; no offline_access requested |
+| Sign-in and delegated renewal | tenant-specific authorize/token endpoints | OIDC `openid`, `profile`, `offline_access` |
 
-MSAL adds OIDC scopes; the client explicitly excludes `offline_access`.
-It retains access tokens in per-session memory only. No delegated `Mail.Send`,
+MSAL adds OIDC scopes including `offline_access` so authorized background Teams
+workers can silently renew delegated access tokens. The administrator consent
+helper includes `offline_access` alongside `ChannelMessage.Send`; existing
+deployments must update consent and authors must sign in again. Access/refresh
+tokens remain in server memory only, never in the journal or browser.
+No delegated `Mail.Send`,
 `User.Read`, `User.ReadBasic.All`, `ChatMessage.Send`, `Group.Read.All`,
 `Directory.Read.All`, `Mail.Read`, `Mail.ReadWrite`, or `Teamwork.Migrate.All`
 is needed. Team/channel IDs are configured, not broadly discovered.

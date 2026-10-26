@@ -15,6 +15,10 @@ from demo_loader.config import Settings
 SCOPES = ["https://graph.microsoft.com/ChannelMessage.Send"]
 
 
+class TeamsAuthorizationError(ValueError):
+    pass
+
+
 @dataclass
 class Session:
     created: float = field(default_factory=time.time)
@@ -22,6 +26,8 @@ class Session:
     claims: dict[str, Any] = field(default_factory=dict)
     flow: dict[str, Any] = field(default_factory=dict)
     cache: msal.TokenCache = field(default_factory=msal.TokenCache)
+    token_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    revoked: bool = False
 
 
 class Auth:
@@ -43,7 +49,6 @@ class Auth:
             authority=f"https://login.microsoftonline.com/{self.settings.tenant_id}",
             client_credential={"client_assertion": self.client_assertion},
             token_cache=session.cache,
-            exclude_scopes=["offline_access"],
             enable_pii_log=False,
         )
 
@@ -102,17 +107,28 @@ class Auth:
         raise HTTPException(403, "Sign in as one of the five assigned demo users")
 
     async def token(self, session: Session) -> str:
-        client = self.client(session)
-        accounts = client.get_accounts()
-        account = next(
-            (a for a in accounts if a.get("local_account_id") == session.claims["oid"]), None
-        )
-        if not account:
-            raise HTTPException(401, "Sign in again as the assigned demo user")
-        result = await asyncio.to_thread(client.acquire_token_silent, SCOPES, account=account)
-        if not result or "access_token" not in result:
-            raise HTTPException(401, "Teams authorization expired; sign in again")
-        return str(result["access_token"])
+        async with session.token_lock:
+            if session.revoked:
+                raise TeamsAuthorizationError("Teams authorization revoked; sign in again")
+            client = self.client(session)
+            accounts = client.get_accounts()
+            account = next(
+                (a for a in accounts if a.get("local_account_id") == session.claims["oid"]), None
+            )
+            if not account:
+                raise TeamsAuthorizationError("Sign in again as the assigned demo user")
+            result = await asyncio.to_thread(client.acquire_token_silent, SCOPES, account=account)
+            if session.revoked:
+                raise TeamsAuthorizationError("Teams authorization revoked; sign in again")
+            if not result or "access_token" not in result:
+                raise TeamsAuthorizationError("Teams authorization expired; sign in again")
+            return str(result["access_token"])
+
+    def revoke(self, session_key: str) -> None:
+        session = self.sessions.pop(session_key, None)
+        if session:
+            session.revoked = True
+            session.cache = msal.TokenCache()
 
 
 async def csrf(request: Request, session: Session) -> None:

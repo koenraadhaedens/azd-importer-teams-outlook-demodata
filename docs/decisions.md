@@ -2,10 +2,14 @@
 
 ## 1. Teams: assisted delegated execution (Modes C + A)
 
-Each demo user signs in separately and executes only their own ready activities.
+Each demo user signs in separately and explicitly authorizes only their own
+pending activities for a started run.
 `ChannelMessage.Send` supports normal channel messages and replies as that user.
-Dependencies can cross users; pending actions remain visible until the appropriate
-user signs in. The application never silently impersonates the five users.
+Dependencies can cross users. A memory-only background worker waits and resumes
+each authorized author's work without further browser clicks. MSAL refreshes
+tokens before sends using `offline_access`; when interaction is required the
+worker pauses for sign-in. Pending actions remain visible until the appropriate
+user authorizes them. The application never silently impersonates the five users.
 Chat creation and email reply/thread APIs are deliberately unsupported in v1.
 No `Teamwork.Migrate.All`, bot, beta endpoint, or password grant is used.
 

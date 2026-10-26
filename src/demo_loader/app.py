@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 
-from demo_loader.auth import SCOPES, Auth, csrf
+from demo_loader.auth import SCOPES, Auth, TeamsAuthorizationError, csrf
 from demo_loader.config import Settings
 from demo_loader.engine import Engine, ExecutionError
 from demo_loader.graph import Gateway, GraphGateway
@@ -143,6 +143,12 @@ def create_app(
         logger.error(json.dumps({"event": "journal_unavailable"}))
         return JSONResponse({"detail": str(exc)}, status_code=503)
 
+    @app.exception_handler(TeamsAuthorizationError)
+    async def teams_authorization_error(
+        request: Request, exc: TeamsAuthorizationError
+    ) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=401)
+
     def cookie(response: RedirectResponse, key: str) -> RedirectResponse:
         response.set_cookie(
             "demo_session",
@@ -201,7 +207,7 @@ def create_app(
     async def logout(request: Request) -> RedirectResponse:
         auth: Auth = app.state.auth
         await csrf(request, auth.session(request))
-        auth.sessions.pop(request.cookies.get("demo_session", ""), None)
+        auth.revoke(request.cookies.get("demo_session", ""))
         response = RedirectResponse(
             f"https://login.microsoftonline.com/{cfg.tenant_id}/oauth2/v2.0/logout?"
             + urlencode({"post_logout_redirect_uri": cfg.public_url + "/"}),
@@ -212,7 +218,7 @@ def create_app(
 
     @app.get("/auth/signed-out")
     async def signed_out(request: Request) -> RedirectResponse:
-        app.state.auth.sessions.pop(request.cookies.get("demo_session", ""), None)
+        app.state.auth.revoke(request.cookies.get("demo_session", ""))
         response = RedirectResponse("/", status_code=303)
         response.delete_cookie("demo_session")
         return response
@@ -324,6 +330,7 @@ def create_app(
                 "demo_user": session.claims["oid"] in auth.demo_ids.values(),
                 "has_teams": bool(teams_authors),
                 "has_my_teams": session.claims["oid"] in teams_authors,
+                "background": app.state.engine.report(run_id)["background"],
                 "per_user": per_user,
                 "authors": authors,
             },
@@ -359,13 +366,17 @@ def create_app(
             raise HTTPException(400, "An operator must first start this reviewed scenario")
         scenario = run["scenario"]
         if not scenario or not any(
-            action["type"] != "email" and action["user"] == key
-            for action in scenario["activities"]
+            action["type"] != "email" and action["user"] == key for action in scenario["activities"]
         ):
             raise HTTPException(
                 400, "No Teams activities are assigned to your user in this scenario"
             )
-        app.state.engine.kick(run_id, key, await auth.token(session))
+        await auth.token(session)
+
+        async def token_for_author() -> str:
+            return await auth.token(session)
+
+        app.state.engine.kick(run_id, key, token_for_author)
         return RedirectResponse(f"/runs/{run_id}", status_code=303)
 
     @app.post("/runs/{run_id}/cancel")

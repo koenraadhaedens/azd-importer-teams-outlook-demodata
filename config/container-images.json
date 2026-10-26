@@ -1,7 +1,7 @@
 {
   "services": {
     "app": {
-      "image": "acrdefcontainer.azurecr.io/azd-m365-demo-loader:20261026-background-teams"
+      "image": "acrdefcontainer.azurecr.io/azd-m365-demo-loader:latest"
     },
     "caddy": {
       "image": "acrdefcontainer.azurecr.io/caddy:2.11.4-alpine"

@@ -16,8 +16,7 @@ class Settings(BaseSettings):
     delivery_enabled: bool = False
     mailbox_scope_confirmed: bool = False
     allow_external_recipients: bool = False
-    users_file: Path = Path("config/demo-users.json")
-    resources_file: Path = Path("config/resources.json")
+    config_file: Path = Path("config/config.json")
     schema_file: Path = Path("schemas/demo-scenario.schema.json")
     data_dir: Path = Path("data")
     max_upload_bytes: int = Field(default=65536, ge=1024, le=1048576)

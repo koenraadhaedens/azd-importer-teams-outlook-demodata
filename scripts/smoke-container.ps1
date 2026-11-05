@@ -1,9 +1,9 @@
 param([string]$Image, [string]$CaddyImage)
 $ErrorActionPreference = "Stop"
-$images = Get-Content -Raw (Join-Path (Join-Path $PSScriptRoot "..") "config/container-images.json") | ConvertFrom-Json
+$images = Get-Content -Raw (Join-Path (Join-Path $PSScriptRoot "..") "config/config.json") | ConvertFrom-Json
 if (-not $Image) { $Image = $images.services.app.image }
 if (-not $CaddyImage) { $CaddyImage = $images.services.caddy.image }
-if (-not $Image -or -not $CaddyImage) { throw "Configure both app and Caddy images in config/container-images.json" }
+if (-not $Image -or -not $CaddyImage) { throw "Configure both app and Caddy images in config/config.json" }
 $appId = $null
 $caddyId = $null
 $smokeScript = Join-Path (Join-Path (Get-Location).Path "tests") "smoke_server.py"

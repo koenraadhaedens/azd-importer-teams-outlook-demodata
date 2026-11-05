@@ -1,0 +1,49 @@
+{
+  "services": {
+    "app": {
+      "image": "acrdefcontainer.azurecr.io/azd-m365-demo-loader:latest"
+    },
+    "caddy": {
+      "image": "acrdefcontainer.azurecr.io/caddy:2.11.4-alpine"
+    }
+  },
+  "x-demo": {
+    "users": [
+      {
+        "key": "koenraad",
+        "displayName": "Koenraad Haedens (mtttraining)",
+        "userPrincipalName": "koenraad@mtttraining.be"
+      },
+      {
+        "key": "billie",
+        "displayName": "Billie Vester",
+        "userPrincipalName": "BillieV@M365CPI55452589.OnMicrosoft.com"
+      },
+      {
+        "key": "hadar",
+        "displayName": "Hadar Caspit",
+        "userPrincipalName": "HadarC@M365CPI55452589.OnMicrosoft.com"
+      },
+      {
+        "key": "kai",
+        "displayName": "Kai Carter",
+        "userPrincipalName": "KaiC@M365CPI55452589.OnMicrosoft.com"
+      },
+      {
+        "key": "ronak",
+        "displayName": "Ronak Gupta",
+        "userPrincipalName": "RonakG@M365CPI55452589.OnMicrosoft.com"
+      }
+    ],
+    "channels": {
+      "project-harvest": {
+        "teamId": "19118a6c-c28b-491c-975b-a1e65b78c140",
+        "channelId": "19:LNeZ_xbbrsY2ys63tfCR_v0n4PI5Dc5mM2skko95K-01@thread.tacv2"
+      },
+      "project-skyhopper": {
+        "teamId": "ecdaeb3c-9c27-4c5b-b315-667bf3bdfe01",
+        "channelId": "19:FfA5kX7QtwThBWj9zyUh4NWG_1Za4M3vLM5JH3-AQKE1@thread.tacv2"
+      }
+    }
+  }
+}

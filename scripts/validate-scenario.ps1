@@ -1,8 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$Scenario,
-    [string]$Users = "config\demo-users.json",
-    [string]$Resources = "config\resources.json"
+    [string]$Config = "config\config.json"
 )
 $ErrorActionPreference = "Stop"
-python -m demo_loader.cli $Scenario --users $Users --resources $Resources
+python -m demo_loader.cli $Scenario --config $Config
 if ($LASTEXITCODE -ne 0) { throw "Scenario validation failed" }

@@ -114,7 +114,7 @@ session store is provided; users must sign in again after replacement.
 Review hash-locked Python dependencies, pinned Caddy/base image versions and
 security advisories. Run CI and tenant-scope smoke checks before enabling
 delivery. Manually build/push both images to their configured registry locations.
-`azd deploy` consumes `config/container-images.json` without building or pushing.
+`azd deploy` consumes `config/config.json` without building or pushing.
 For predictable updates change the tag/digest rather than overwriting an unchanged
 reference: ACI may not refresh an image when the declaration has not changed.
 For default anonymous pulls, verify each image/tag is publicly pullable and

@@ -26,7 +26,7 @@ name is retained; no remote or history is rewritten.
    State and replay protection can be lost on ACI lifecycle changes; this is an
    explicitly accepted demo-only tradeoff. Per the updated
    image-publishing requirement, use manually published images in an existing
-   registry configured through config/container-images.json; do not create a
+   registry configured through config/config.json; do not create a
    new registry or build/push during deployment.
 7. Add administrator scripts, deployment/operations/security documentation,
    valid and invalid examples, and the portable Cowork scenario-creation skill.

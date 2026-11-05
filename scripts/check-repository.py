@@ -9,7 +9,7 @@ import jsonschema
 import yaml
 
 from demo_loader.models import Scenario
-from demo_loader.validation import load_yaml, parse_scenario
+from demo_loader.validation import load_config, load_yaml, parse_scenario
 
 
 def main() -> None:
@@ -46,8 +46,10 @@ def main() -> None:
     assert hooks["postprovision"]["run"] == "./scripts/initialize-web-endpoint.ps1"
     assert hooks["postprovision"]["interactive"] is False
     assert load_yaml(Path("compose.yaml").read_bytes())["services"]["app"].get("ports") is None
-    images = json.loads(Path("config/container-images.json").read_text("utf-8"))
-    assert set(images) == {"services"}
+    config_path = Path("config/config.json")
+    load_config(config_path)
+    images = json.loads(config_path.read_text("utf-8"))
+    assert set(images) == {"services", "x-demo"}
     assert set(images["services"]) == {"app", "caddy"}
     for name, service in images["services"].items():
         assert set(service) == {"image"}, f"Only an image reference is allowed for {name}"

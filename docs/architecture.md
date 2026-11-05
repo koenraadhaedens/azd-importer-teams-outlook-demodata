@@ -42,8 +42,8 @@ remote outcomes before running scenarios after storage loss.
 
 ## Container image configuration
 
-[config/container-images.json](../config/container-images.json) is the shared
-source for application and Caddy image references. Compose extends its service
+[config/config.json](../config/config.json) is the shared source for demo users,
+channel aliases, and application and Caddy image references. Compose extends its service
 entries; Bicep loads their image values as defaults; the smoke script reads them
 unless explicit test overrides are supplied. The deploy hook does not build or
 publish images, and infrastructure no longer creates an unused ACR.

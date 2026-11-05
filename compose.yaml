@@ -2,7 +2,7 @@ name: azd-m365-demo-loader
 services:
   app:
     extends:
-      file: config/container-images.json
+      file: config/config.json
       service: app
     env_file: .env
     environment:
@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
   caddy:
     extends:
-      file: config/container-images.json
+      file: config/config.json
       service: caddy
     environment:
       PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:?Set PUBLIC_HOSTNAME in .env}

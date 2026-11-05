@@ -10,7 +10,7 @@ import yaml
 from pydantic import EmailStr, TypeAdapter
 from yaml.tokens import AliasToken, AnchorToken, TagToken
 
-from demo_loader.models import PLACEHOLDER, Email, Resources, Scenario, Users
+from demo_loader.models import PLACEHOLDER, Configuration, Email, Resources, Scenario, Users
 
 
 class InputError(ValueError):
@@ -85,14 +85,12 @@ def load_json(data: bytes, maximum: int = 65536) -> dict[str, Any]:
     return value
 
 
-def load_config(users_path: Path, resources_path: Path) -> tuple[Users, Resources]:
+def load_config(config_path: Path) -> tuple[Users, Resources]:
     try:
-        return (
-            Users.model_validate(load_json(users_path.read_bytes())),
-            Resources.model_validate(load_json(resources_path.read_bytes())),
-        )
+        configuration = Configuration.model_validate(load_json(config_path.read_bytes()))
     except OSError as exc:
-        raise InputError("Required user/resource configuration is missing or unreadable") from exc
+        raise InputError("Required configuration is missing or unreadable") from exc
+    return Users(users=configuration.demo.users), Resources(channels=configuration.demo.channels)
 
 
 def parse_scenario(data: bytes, schema_path: Path, maximum: int = 65536) -> Scenario:
@@ -114,7 +112,7 @@ def prepare(
     if set(scenario.requiredUsers) - by_key.keys():
         raise InputError("Scenario references an unknown demo user")
     if set(scenario.requiredChannels) - resources.channels.keys():
-        raise InputError("Configure all required channel aliases in resources file")
+        raise InputError("Configure all required channel aliases in configuration file")
     value = scenario.model_dump(mode="json")
 
     def replace(text: str) -> str:

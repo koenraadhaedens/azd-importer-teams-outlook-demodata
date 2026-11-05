@@ -96,32 +96,39 @@ and app-role-assignment authorization. **Delegated Teams consent and enterprise-
 assignments remain administrator steps**, as does Exchange mailbox scope setup.
 See [Entra setup](docs/entra-setup.md) for bootstrap and migration details.
 
-Replace UPNs in [config/demo-users.json](config/demo-users.json); exactly
-five distinct keys and UPNs are mandatory. Configure channel aliases in
-[config/resources.json](config/resources.json). Never put credentials in either.
+Configure `x-demo.users`, `x-demo.channels`, and container-image `services` in
+[config/config.json](config/config.json); exactly five distinct user keys and UPNs
+are mandatory. Never put credentials in this file.
 Keep completed configurations out of public commits.
 
-User/resource configuration is JSON so both the app and Cloud Shell can read the
-same files without a PowerShell YAML module. Scenario documents remain YAML.
+Configuration is JSON so the app, deployment tools, and Cloud Shell can read the
+same file without a PowerShell YAML module. Scenario documents remain YAML.
+The `x-demo` extension keeps the file compatible with Docker Compose while
+grouping the user and channel mappings.
 Channel mappings contain a `teamId` UUID and a `channelId`; IDs belong in this
 configuration, not in scenario documents. An empty `channels` object is valid at
-startup, but Teams plans fail until their aliases are configured. For example:
+startup, but Teams plans fail until their aliases are configured. For example,
+the channel section looks like this; retain `services` and the five `x-demo.users`:
 
 ```json
 {
-  "channels": {
-    "launch": {
-      "teamId": "00000000-0000-0000-0000-000000000001",
-      "channelId": "19:example@thread.tacv2"
+  "x-demo": {
+    "channels": {
+      "launch": {
+        "teamId": "00000000-0000-0000-0000-000000000001",
+        "channelId": "19:example@thread.tacv2"
+      }
     }
   }
 }
 ```
 
-The Docker build packages both JSON files into the app image. After changing
-them, build and manually publish a new image and select its new tag/digest before
-deployment. If you override `USERS_FILE` / `RESOURCES_FILE`, update those settings
-to JSON paths too; YAML user/resource configuration is no longer read.
+The Docker build packages this JSON file into the app image. After changing
+user/channel mappings, build and manually publish a new image and select its new
+tag/digest before deployment. Custom runtime paths use `CONFIG_FILE`; offline
+validation uses `--config` (PowerShell: `-Config`). These replace `USERS_FILE` /
+`RESOURCES_FILE` and `--users` / `--resources`. Custom files must contain the same
+combined structure; YAML configuration is not read.
 
 ```powershell
 python -m venv .venv
@@ -139,7 +146,7 @@ or required Graph authorization; it never falls back to a developer CLI identity
 ## Docker and Caddy HTTPS
 
 Both deployment image references live in
-[config/container-images.json](config/container-images.json):
+[config/config.json](config/config.json), under `services`:
 
 | Container | Default image |
 |---|---|
@@ -165,7 +172,7 @@ Example manual publication (requires registry push rights):
 
 ```powershell
 az acr login --name acrdefcontainer
-$images = Get-Content -Raw config\container-images.json | ConvertFrom-Json
+$images = Get-Content -Raw config\config.json | ConvertFrom-Json
 docker build -t $images.services.app.image .
 docker push $images.services.app.image
 docker pull caddy:2.11.4-alpine
@@ -241,7 +248,7 @@ CLI is normally authenticated by the portal. Authenticate azd if prompted; its
 authentication is separate from Azure CLI. On a local PowerShell 7 terminal,
 install the prerequisite tools and run `az login` and `azd auth login` first.
 
-Edit [config/container-images.json](config/container-images.json) to match the
+Edit [config/config.json](config/config.json) to match the
 two published image references before provisioning.
 
 #### 3. Create and configure a new environment
@@ -329,21 +336,21 @@ This error does not prove that the web app registration was reused:
 `AZURE_IDENTITY_PRINCIPAL_ID` identify the runtime principal used for Exchange.
 
 For command-line assignments, read the five existing demo users from
-[config/demo-users.json](config/demo-users.json), rather than maintaining a
+[config/config.json](config/config.json), rather than maintaining a
 separate UPN list. PowerShell's JSON reader is built in; no converter module is
 needed:
 
 ```powershell
-$demoConfig = Get-Content (Join-Path "config" "demo-users.json") -Raw -ErrorAction Stop |
+$demoConfig = Get-Content (Join-Path "config" "config.json") -Raw -ErrorAction Stop |
     ConvertFrom-Json -ErrorAction Stop
-$demoUpns = @($demoConfig.users | ForEach-Object {
+$demoUpns = @($demoConfig.'x-demo'.users | ForEach-Object {
     if ([string]::IsNullOrWhiteSpace($_.userPrincipalName)) {
         throw "Each configured demo user must have a userPrincipalName."
     }
     $_.userPrincipalName
 })
 if ($demoUpns.Count -ne 5 -or @($demoUpns | Sort-Object -Unique).Count -ne 5) {
-    throw "config/demo-users.json must contain exactly five distinct demo-user UPNs."
+    throw "config/config.json must contain exactly five distinct demo-user UPNs."
 }
 $demoUpns
 ```

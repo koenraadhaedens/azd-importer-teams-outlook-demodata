@@ -42,6 +42,24 @@ class Resources(StrictModel):
     channels: dict[Key, Channel] = Field(default_factory=dict)
 
 
+class ContainerImage(StrictModel):
+    image: Annotated[str, Field(min_length=1)]
+
+
+class ContainerServices(StrictModel):
+    app: ContainerImage
+    caddy: ContainerImage
+
+
+class DemoConfiguration(Users, Resources):
+    pass
+
+
+class Configuration(StrictModel):
+    services: ContainerServices
+    demo: DemoConfiguration = Field(alias="x-demo")
+
+
 class ActivityBase(StrictModel):
     id: Key
     user: Key

@@ -63,7 +63,7 @@ and enables Caddy automatic public ACME issuance/renewal. No custom DNS or
 preconfigured hostname is required. Public DNS resolution, inbound 80/443 and
 successful CA validation remain prerequisites; failures are not bypassed.
 The azd deploy hook creates or replaces the group using the manually published
-images in `config/container-images.json`. It never builds or pushes images.
+images in `config/config.json`. It never builds or pushes images.
 Compose extends that same JSON configuration, and smoke tests use it by default.
 Provision creates supporting resources and the initial group, not a new registry.
 Default images are pulled anonymously, including across tenants; no registry

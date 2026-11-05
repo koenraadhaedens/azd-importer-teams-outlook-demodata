@@ -19,7 +19,7 @@ SCHEMA = Path("schemas/demo-scenario.schema.json")
 
 def test_valid_sample() -> None:
     scenario = parse_scenario(Path("examples/demo-scenario.yaml").read_bytes(), SCHEMA)
-    users, resources = load_config(Path("config/demo-users.json"), Path("config/resources.json"))
+    users, resources = load_config(Path("config/config.json"))
     result = prepare(scenario, users, resources)
     assert "Alex Wilber" in result.activities[0].body
 
@@ -52,12 +52,13 @@ def test_invalid_schema() -> None:
 
 
 def test_five_users_and_missing_configuration(tmp_path: Path) -> None:
-    users = load_json(Path("config/demo-users.json").read_bytes())
+    configuration = load_json(Path("config/config.json").read_bytes())
+    users = {"users": configuration["x-demo"]["users"]}
     users["users"].pop()
     with pytest.raises(ValidationError):
         Users.model_validate(users)
     with pytest.raises(InputError, match="missing"):
-        load_config(tmp_path / "missing.json", Path("config/resources.json"))
+        load_config(tmp_path / "missing.json")
 
 
 @pytest.mark.parametrize("mutation", ["duplicate", "cycle", "unknown", "type", "reply"])
@@ -78,7 +79,7 @@ def test_structural_rejections(raw_scenario: dict, mutation: str) -> None:
 
 
 def test_recipient_placeholder_and_html_boundaries(raw_scenario: dict) -> None:
-    users, resources = load_config(Path("config/demo-users.json"), Path("config/resources.json"))
+    users, resources = load_config(Path("config/config.json"))
     raw_scenario["activities"][0]["to"] = ["outside@example.org"]
     with pytest.raises(InputError, match="Recipients"):
         prepare(Scenario.model_validate(raw_scenario), users, resources)
@@ -98,7 +99,7 @@ def test_recipient_placeholder_and_html_boundaries(raw_scenario: dict) -> None:
 
 
 def test_unknown_configured_user(raw_scenario: dict) -> None:
-    users, _ = load_config(Path("config/demo-users.json"), Path("config/resources.json"))
+    users, _ = load_config(Path("config/config.json"))
     raw_scenario["requiredUsers"][-1] = "nobody"
     raw_scenario["activities"][1]["user"] = "nobody"
     with pytest.raises(InputError, match="unknown"):

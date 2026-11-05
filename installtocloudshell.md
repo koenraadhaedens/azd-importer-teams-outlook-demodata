@@ -18,7 +18,7 @@ Before starting:
   described in [Entra setup](docs/entra-setup.md#deployment-identity-prerequisites).
 - The published app must contain your correct five users and Teams mappings.
   The checkout used below must contain the same configuration.
-- Both images in [container-images.json](config/container-images.json) must be
+- Both images in [config.json](config/config.json) must be
   published and anonymously pullable, including the exact configured tags.
   Building locally or pushing only `:latest` does not publish another tag such
   as `:20261026-background-teams`.
@@ -120,9 +120,9 @@ These must match the users packaged in the published image. Editing the
 checkout does not update that image.
 
 ```powershell
-$demoConfig = Get-Content -LiteralPath (Join-Path "config" "demo-users.json") -Raw |
+$demoConfig = Get-Content -LiteralPath (Join-Path "config" "config.json") -Raw |
     ConvertFrom-Json
-$demoUpns = @($demoConfig.users | ForEach-Object { $_.userPrincipalName })
+$demoUpns = @($demoConfig.'x-demo'.users | ForEach-Object { $_.userPrincipalName })
 if ($demoUpns.Count -ne 5 -or
     @($demoUpns | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0 -or
     @($demoUpns | Sort-Object -Unique).Count -ne 5) {
@@ -194,9 +194,9 @@ Reload the selected environment's runtime identity IDs and mailbox list:
 $identityClientId = azd env get-value AZURE_IDENTITY_CLIENT_ID
 $identityPrincipalId = azd env get-value AZURE_IDENTITY_PRINCIPAL_ID
 $environmentName = azd env get-value AZURE_ENV_NAME
-$demoConfig = Get-Content -LiteralPath (Join-Path "config" "demo-users.json") -Raw |
+$demoConfig = Get-Content -LiteralPath (Join-Path "config" "config.json") -Raw |
     ConvertFrom-Json
-$demoUpns = @($demoConfig.users | ForEach-Object { $_.userPrincipalName })
+$demoUpns = @($demoConfig.'x-demo'.users | ForEach-Object { $_.userPrincipalName })
 ```
 
 Enter an existing sixth mailbox that is **not** one of the five demo users:
@@ -260,9 +260,9 @@ the current identity IDs and rerun the updated helper:
 ```powershell
 $identityClientId = (azd env get-value AZURE_IDENTITY_CLIENT_ID).Trim()
 $identityPrincipalId = (azd env get-value AZURE_IDENTITY_PRINCIPAL_ID).Trim()
-$demoConfig = Get-Content -LiteralPath (Join-Path "config" "demo-users.json") -Raw |
+$demoConfig = Get-Content -LiteralPath (Join-Path "config" "config.json") -Raw |
     ConvertFrom-Json
-$demoUpns = @($demoConfig.users | ForEach-Object { $_.userPrincipalName })
+$demoUpns = @($demoConfig.'x-demo'.users | ForEach-Object { $_.userPrincipalName })
 $outOfScopeTestUpn = Read-Host "Sixth mailbox UPN, not one of the five demo users"
 $environmentName = azd env get-value AZURE_ENV_NAME
 & (Join-Path "scripts" "setup-exchange.ps1") `
@@ -348,7 +348,7 @@ az deployment operation group list --resource-group $resourceGroup --name aci-ap
 ```
 
 For `InaccessibleImage`, compare the **exact** image reference in the error with
-[container-images.json](config/container-images.json). Public access does not
+[config.json](config/config.json). Public access does not
 make a missing tag available. For example, if Azure requests
 `acrdefcontainer.azurecr.io/azd-m365-demo-loader:20261026-background-teams`,
 pushing only `acrdefcontainer.azurecr.io/azd-m365-demo-loader:latest` is not enough.
@@ -380,7 +380,7 @@ azd env select (Read-Host "Existing environment name")
 ```
 
 Before redeploying, change the app image in
-[container-images.json](config/container-images.json) to a newly published
+[config.json](config/config.json) to a newly published
 unique tag or digest. Reusing unchanged `:latest` does not reliably refresh ACI.
 See [update instructions](README.md#updating-an-installed-environment).
 
@@ -388,7 +388,7 @@ On the **Docker build workstation**, build and push the exact configured app
 reference (not just `:latest`):
 
 ```powershell
-$images = Get-Content -LiteralPath (Join-Path "config" "container-images.json") -Raw |
+$images = Get-Content -LiteralPath (Join-Path "config" "config.json") -Raw |
     ConvertFrom-Json
 docker build --platform linux/amd64 -t $images.services.app.image .
 if ($LASTEXITCODE -ne 0) { throw "App image build failed; do not deploy." }
@@ -400,7 +400,7 @@ Your build workstation may need publisher authentication for `docker push`;
 this is separate from ACI's anonymous pull and requires no runtime credentials.
 If the assistant already built that exact local tag, only the push is needed.
 Then return to **Cloud Shell** and ensure its
-[container-images.json](config/container-images.json) contains the same pushed
+[config.json](config/config.json) contains the same pushed
 reference before running the deployment below. `azd deploy` does not build,
 push, or create missing image tags.
 

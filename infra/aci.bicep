@@ -5,8 +5,8 @@ param containerGroupName string
 param dnsLabel string
 param publicHostname string = ''
 param acmeEmail string
-param image string = loadJsonContent('../config/container-images.json').services.app.image
-param caddyImage string = loadJsonContent('../config/container-images.json').services.caddy.image
+param image string = loadJsonContent('../config/config.json', '$.services.app.image')
+param caddyImage string = loadJsonContent('../config/config.json', '$.services.caddy.image')
 param useManagedIdentityForImagePull bool = false
 param identityResourceId string
 param identityClientId string

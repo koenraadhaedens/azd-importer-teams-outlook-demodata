@@ -57,10 +57,9 @@ release security tooling. Static success is not a claim of successful deployment
 
 - `.env.example`: blank tenant/application/operator/credential settings, example
   local ACME email; copy to ignored `.env` and fill securely.
-- `config/demo-users.json`: five configured user mappings; verify them for the
-  target tenant before publishing the app image.
-- `config/resources.json`: empty channel mapping; configure real team/channel
-  IDs as described in the README.
+- `config/config.json`: five configured user mappings, channel aliases, and
+  container image references; verify them for the target tenant before publishing
+  the app image.
 - `README.md` / `docs/*.md`: angle-bracket IDs, example custom domains and
   administrator commands are documentation, not deployed values.
 - `.github/workflows/azure-dev.yml`: GitHub environment variable references,
@@ -71,9 +70,9 @@ IDs or credentials. Valid scenario examples are deliberately dry-run-only.
 
 ## JSON configuration follow-up
 
-- User/resource configuration moved to `config/demo-users.json` and
-  `config/resources.json`, preserving every existing user mapping and the empty
-  channel mapping. Scenario documents and scenario parsing remain YAML.
+- User/resource configuration originally moved to separate JSON files, now
+  consolidated with image references in `config/config.json`. Existing mappings
+  are preserved. Scenario documents and scenario parsing remain YAML.
 - Runtime, CLI, environment examples, PowerShell validation defaults and Cloud
   Shell assignment instructions now use JSON. No PowerShell YAML module is
   required to read deployment configuration.
@@ -97,7 +96,7 @@ IDs or credentials. Valid scenario examples are deliberately dry-run-only.
 ## Image-configuration follow-up
 
 The deployment now consumes manually published images from
-`config/container-images.json`: app
+`config/config.json` under `services`: app
 `acrdefcontainer.azurecr.io/azd-m365-demo-loader` (implicit latest) and Caddy
 `acrdefcontainer.azurecr.io/caddy:2.11.4-alpine`. No build/push or registry creation
 is performed by deployment. Existing-registry pull authorization is a manual

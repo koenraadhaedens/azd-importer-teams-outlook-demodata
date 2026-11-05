@@ -49,7 +49,7 @@ def main() -> None:
     config_path = Path("config/config.json")
     load_config(config_path)
     images = json.loads(config_path.read_text("utf-8"))
-    assert set(images) == {"services", "x-demo"}
+    assert set(images) == {"services", "x-demo", "x-setup"}
     assert set(images["services"]) == {"app", "caddy"}
     for name, service in images["services"].items():
         assert set(service) == {"image"}, f"Only an image reference is allowed for {name}"

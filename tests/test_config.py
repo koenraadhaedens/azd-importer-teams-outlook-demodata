@@ -153,6 +153,28 @@ def test_app_loads_json_configuration(
         assert client.app.state.users.users[0].userPrincipalName == "adele@example.org"
 
 
+@pytest.mark.parametrize("mutation", ["valid", "blank", "invalid-email", "demo-mailbox"])
+def test_setup_configuration(configuration_path: Path, mutation: str) -> None:
+    data = load_json(configuration_path.read_bytes())
+    data["x-setup"] = {
+        "acmeEmail": "operator@example.org",
+        "outOfScopeTestUpn": "excluded@example.org",
+    }
+    if mutation == "blank":
+        data["x-setup"] = {"acmeEmail": "", "outOfScopeTestUpn": ""}
+    elif mutation == "invalid-email":
+        data["x-setup"]["acmeEmail"] = "not-an-email"
+    elif mutation == "demo-mailbox":
+        data["x-setup"]["outOfScopeTestUpn"] = "ADELE@EXAMPLE.ORG"
+    configuration_path.write_text(json.dumps(data), encoding="utf-8")
+    if mutation in ("invalid-email", "demo-mailbox"):
+        with pytest.raises(ValidationError):
+            load_config(configuration_path)
+    else:
+        users, _ = load_config(configuration_path)
+        assert len(users.users) == 5
+
+
 @pytest.mark.parametrize("custom_paths", [False, True])
 def test_cli_uses_json_configuration_and_yaml_scenarios(
     configuration_path: Path,

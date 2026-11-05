@@ -55,9 +55,28 @@ class DemoConfiguration(Users, Resources):
     pass
 
 
+class SetupConfiguration(StrictModel):
+    acmeEmail: EmailStr | Literal[""] = ""
+    outOfScopeTestUpn: EmailStr | Literal[""] = ""
+
+
 class Configuration(StrictModel):
     services: ContainerServices
     demo: DemoConfiguration = Field(alias="x-demo")
+    setup: SetupConfiguration | None = Field(default=None, alias="x-setup")
+
+    @model_validator(mode="after")
+    def excluded_mailbox(self) -> Self:
+        if (
+            self.setup
+            and self.setup.outOfScopeTestUpn
+            and any(
+                user.userPrincipalName.lower() == self.setup.outOfScopeTestUpn.lower()
+                for user in self.demo.users
+            )
+        ):
+            raise ValueError("Out-of-scope test mailbox must not be a demo mailbox")
+        return self
 
 
 class ActivityBase(StrictModel):

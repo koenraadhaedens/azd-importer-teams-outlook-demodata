@@ -3,13 +3,10 @@
 Open **PowerShell** in [Azure Cloud Shell](https://shell.azure.com/).
 Tools and Azure CLI sign-in are assumed to be available.
 
-This is a **fresh installation** using your already-published app image.
-This walkthrough enables **real delivery** at deployment after mailbox-scope
-verification. Running a reviewed executable scenario can send real demo mail
-and Teams posts; inspect its dry run before explicitly starting execution.
-Copy **one snippet at a time** and wait for completion. Resolve any reported
-errors before continuing.
-Keep the same shell open except when step 11 starts a clean Exchange session.
+This is a **fresh installation** using already-published images. It enables
+**real delivery** only after administrator-reviewed mailbox-scope verification.
+No scenario is executed by setup; inspect a successful dry run before explicitly
+starting a reviewed executable scenario.
 
 Before starting:
 
@@ -17,353 +14,211 @@ Before starting:
 - Your account needs Azure deployment rights and the Entra administrator rights
   described in [Entra setup](docs/entra-setup.md#deployment-identity-prerequisites).
 - The published app must contain your correct five users and Teams mappings.
-  The checkout used below must contain the same configuration.
-- Both images in [config.json](config/config.json) must be
-  published and anonymously pullable, including the exact configured tags.
-  Building locally or pushing only `:latest` does not publish another tag such
-  as `:20261026-background-teams`.
+  The checkout must contain the same configuration.
+- Both images in [config.json](config/config.json) must be published and
+  anonymously pullable, including their exact tags. Building locally or pushing
+  only `:latest` does not publish another tag.
 
-Public ACR images do **not** require registry credentials, `az acr login`, or an
-`AcrPull` grant for the runtime identity. Leave
-`USE_MANAGED_IDENTITY_FOR_IMAGE_PULL` unset (the default) or false.
-`azd env get-value USE_MANAGED_IDENTITY_FOR_IMAGE_PULL` reporting "key not found"
-is expected when unset; it is not a deployment error.
+Public ACR images require no registry credentials, `az acr login`, or `AcrPull`
+grant for the runtime identity. Leave `USE_MANAGED_IDENTITY_FOR_IMAGE_PULL` unset
+or false. An azd "key not found" message for this optional value is expected.
 
-Provisioning creates the resource group and runtime managed identity; deployment
-adds the ACI container group. No Key Vault, Log Analytics workspace or storage
-account is provisioned. Read app and HTTPS logs with `az container logs` as shown
-below; no centralized log retention is configured.
+Provisioning creates the resource group and runtime managed identity; its hook
+adds dormant ACI and the secretless web registration. No Key Vault, Log Analytics
+workspace or storage account is provisioned. Do not use `azd up` to skip the
+administrator steps.
 
-## 1. Clone and open the project
+## 1. Clone and sign in
 
 ```powershell
 git clone https://github.com/koenraadhaedens/azd-importer-teams-outlook-demodata.git
 Set-Location azd-importer-teams-outlook-demodata
-```
-
-If you already have the checkout, enter that folder instead of cloning again.
-
-## 2. Sign in to azd
-
-Complete the sign-in with your CDX deployment account. Azure CLI and azd have
-separate authentication.
-
-```powershell
 azd auth login --use-device-code
 ```
 
-## 3. Prepare the demo settings
-
-Only confirm this after verifying you are using the isolated CDX tenant.
-Enter an email address for HTTPS certificate notices.
-These process environment variables supply the provisioning hooks without
-creating an azd environment yet. Keep this shell open through provisioning;
-the settings are saved to the new azd environment afterward.
+If you already have the checkout, enter that folder instead of cloning again.
+Azure CLI and azd authenticate separately. Confirm Azure CLI's selected
+subscription and tenant before proceeding:
 
 ```powershell
-$env:DEMO_TENANT_CONFIRMED = "true"
-$env:ACME_EMAIL = Read-Host "Email for certificate notices"
-$env:DELIVERY_ENABLED = "true"
-$env:MAILBOX_SCOPE_CONFIRMED = "false"
+az account show --query "{subscription:name,tenantId:tenantId}" --output table
 ```
 
-## 4. Set yourself as the operator
+Use `az account set --subscription "<subscription-id>"` if needed. Complete azd
+sign-in with your CDX deployment account.
 
-```powershell
-$operatorId = az ad signed-in-user show --query id --output tsv
-if ([string]::IsNullOrWhiteSpace($operatorId)) {
-    throw "Could not resolve the signed-in operator."
+## 2. Edit the configuration once
+
+Set these two fields in [config.json](config/config.json):
+
+```json
+"x-setup": {
+  "acmeEmail": "certificate-notices@example.org",
+  "outOfScopeTestUpn": "existing-sixth-mailbox@your-demo-tenant.example"
 }
-$operatorId = $operatorId.Trim()
-$env:OPERATOR_IDS = $operatorId
 ```
 
-## 5. Provision
+Replace both examples with real addresses:
 
-For a fresh checkout with no selected environment, enter a new **environment
-name** when `azd provision` prompts. Select your **subscription and location**
-when prompted too; there is no separate `azd env new` step. Azure CLI must also
-be authenticated in the same target tenant/subscription because the hooks use it.
+- `acmeEmail`: administrative email for HTTPS certificate notices.
+- `outOfScopeTestUpn`: an **existing sixth mailbox**, not one of `x-demo.users`.
+  It is only used to test that the runtime identity cannot access it. Setup does
+  not assign this user to the app or send mail to it.
+
+Retain `services`, the five `x-demo.users`, and `x-demo.channels`.
+Blank or invalid emails and a sixth UPN matching a demo user are rejected before
+setup contacts Azure. The Exchange helper additionally resolves primary SMTP
+addresses and rejects aliases that resolve to one of the five demo mailboxes.
+Never put credentials in this file or publish tenant configuration accidentally.
+
+Changing only `x-setup` requires no image rebuild; these are setup-tool settings,
+not runtime user/channel mappings. Changing packaged mappings still requires a
+newly built and published app image. The certificate email is saved into the azd
+environment by setup. A custom file can be supplied with `-Config <path>` on
+each stage; its mappings must match the published image.
+
+## 3. Provision with delivery disabled
+
+After verifying the isolated CDX tenant/subscription:
 
 ```powershell
-azd provision
+pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Provision -ConfirmDemoTenant
 ```
 
-Wait until provisioning succeeds. It creates the Azure resources, runtime Graph
-grant, public hostname, and secretless web registration.
-The app is intentionally dormant until the administrator steps below are done.
-Do not use `azd up` to skip those steps.
+On a fresh checkout, `azd provision` asks for the new **environment name**,
+**subscription**, and **location**. Select the same tenant/subscription as Azure
+CLI. These choices and authentication remain interactive; the email questions
+and copying of IDs/settings are removed.
 
-After provisioning succeeds, save the prepared settings to the selected azd
-environment so they remain available to later commands and new shell sessions:
+[setup.ps1](scripts/setup.ps1) reads the certificate email, resolves your
+signed-in operator object ID, provisions, and saves all prepared values into the
+selected environment. Delivery and mailbox-scope confirmation remain **false**.
+Wait for success and resolve errors before proceeding.
+
+## 4. Assign users and grant Teams consent
 
 ```powershell
-azd env set DEMO_TENANT_CONFIRMED $env:DEMO_TENANT_CONFIRMED
-azd env set ACME_EMAIL $env:ACME_EMAIL
-azd env set DELIVERY_ENABLED $env:DELIVERY_ENABLED
-azd env set MAILBOX_SCOPE_CONFIRMED $env:MAILBOX_SCOPE_CONFIRMED
-azd env set OPERATOR_IDS $env:OPERATOR_IDS
+pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Entra -InstallModules
 ```
 
-## 6. Read the generated IDs
+The script reads the selected environment's web client ID and configured operator
+IDs, resolves the five demo users, and calls [setup-entra.ps1](scripts/setup-entra.ps1)
+to assign them and grant delegated `ChannelMessage.Send` / `offline_access`
+consent. `-InstallModules` installs only missing administrator modules for the
+current user; omit it if they are already installed.
 
-```powershell
-$webClientId = azd env get-value WEB_CLIENT_ID
-$identityClientId = azd env get-value AZURE_IDENTITY_CLIENT_ID
-$identityPrincipalId = azd env get-value AZURE_IDENTITY_PRINCIPAL_ID
-$environmentName = azd env get-value AZURE_ENV_NAME
-```
-
-## 7. Read the five configured demo users
-
-These must match the users packaged in the published image. Editing the
-checkout does not update that image.
-
-```powershell
-$demoConfig = Get-Content -LiteralPath (Join-Path "config" "config.json") -Raw |
-    ConvertFrom-Json
-$demoUpns = @($demoConfig.'x-demo'.users | ForEach-Object { $_.userPrincipalName })
-if ($demoUpns.Count -ne 5 -or
-    @($demoUpns | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0 -or
-    @($demoUpns | Sort-Object -Unique).Count -ne 5) {
-    throw "Expected exactly five distinct, nonempty demo-user UPNs."
-}
-$demoUpns
-```
-
-## 8. Install the administrator modules
-
-These are additional modules used by the permission helpers, not Cloud Shell
-deployment prerequisites.
-
-```powershell
-Install-Module Microsoft.Graph.Applications -Scope CurrentUser -Force
-Install-Module Microsoft.Graph.Identity.SignIns -Scope CurrentUser -Force
-Install-Module ExchangeOnlineManagement -Scope CurrentUser -Force
-```
-
-## 9. Resolve the users for application access
-
-```powershell
-$allowedIds = @($operatorId)
-foreach ($upn in $demoUpns) {
-    $id = az ad user show --id $upn --query id --output tsv
-    if ([string]::IsNullOrWhiteSpace($id)) {
-        throw "Could not resolve demo user: $upn"
-    }
-    $allowedIds += $id.Trim()
-}
-$allowedIds = @($allowedIds | Sort-Object -Unique)
-```
-
-## 10. Assign users and grant Teams consent
-
-Complete the helper's sign-in as an authorized administrator **in the CDX tenant**.
-This assigns the operator and five demo users and grants delegated
-`ChannelMessage.Send` consent.
-
-```powershell
-& (Join-Path "scripts" "setup-entra.ps1") `
-    -WebClientId ([guid]$webClientId) `
-    -AllowedObjectIds $allowedIds `
-    -GrantConsent
-```
-
-If module sign-in cannot complete in Cloud Shell, use the Entra portal:
-find the application by `$webClientId`, grant admin consent under
-**App registrations > API permissions**, then assign the operator and five
-users under **Enterprise applications > Users and groups**.
+Complete module sign-in as an authorized administrator **in the CDX tenant**.
+If module sign-in is unavailable in Cloud Shell, use the Entra portal or an
+administrator workstation: find the app by `azd env get-value WEB_CLIENT_ID`,
+grant admin consent under **App registrations > API permissions**, then assign
+the operator and five users under **Enterprise applications > Users and groups**.
 Keep **Assignment required = Yes**.
 
-## 11. Start a clean PowerShell process for Exchange
-
-Graph and Exchange modules can load incompatible versions of shared assemblies.
-After Graph setup, start a separate process so Exchange does not reuse those
-assemblies. Removing a module does not unload its assemblies.
+## 5. Configure and review Exchange mailbox scope
 
 ```powershell
-pwsh -NoProfile
+pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Exchange -InstallModules
 ```
 
-Wait for the new PowerShell prompt. It keeps the current directory, but not your
-PowerShell variables. Do not load Microsoft Graph modules in this new process.
+Each stage command starts and exits a separate clean PowerShell process. This
+keeps Microsoft Graph and Exchange assemblies isolated; no nested interactive
+shell or manual variable reload is needed. Do not dot-source these stage commands
+into a process that already loaded Graph modules.
 
-Reload the selected environment's runtime identity IDs and mailbox list:
+The script reads the runtime identity IDs, environment name, five demo users,
+and excluded test mailbox, then calls [setup-exchange.ps1](scripts/setup-exchange.ps1).
+Complete sign-in as your CDX Exchange administrator.
 
-```powershell
-$identityClientId = azd env get-value AZURE_IDENTITY_CLIENT_ID
-$identityPrincipalId = azd env get-value AZURE_IDENTITY_PRINCIPAL_ID
-$environmentName = azd env get-value AZURE_ENV_NAME
-$demoConfig = Get-Content -LiteralPath (Join-Path "config" "config.json") -Raw |
-    ConvertFrom-Json
-$demoUpns = @($demoConfig.'x-demo'.users | ForEach-Object { $_.userPrincipalName })
-```
+**Review before continuing:** `Application Mail.Send` must show five demo
+mailboxes with `InScope = True` and the sixth with `InScope = False`. Allow time
+for propagation and rerun this stage if necessary. Also review additive grants:
+do not grant unscoped Graph application `Mail.Send` or leave other Exchange
+assignments that broaden access. This review is not automatically confirmed.
 
-Enter an existing sixth mailbox that is **not** one of the five demo users:
-
-```powershell
-$outOfScopeTestUpn = Read-Host "Sixth mailbox UPN for the out-of-scope test"
-```
-
-## 12. Configure Exchange mailbox scope
-
-Run in the clean process from step 11. Complete sign-in as your CDX Exchange
-administrator. These parameters use the **runtime managed identity**, not the
-web application.
-
-```powershell
-& (Join-Path "scripts" "setup-exchange.ps1") `
-    -ApplicationId ([guid]$identityClientId) `
-    -PrincipalObjectId ([guid]$identityPrincipalId) `
-    -DemoUpns $demoUpns `
-    -OutOfScopeTestUpn $outOfScopeTestUpn `
-    -ScopeName "$environmentName-FiveMailboxes"
-```
-
-**Check the results before continuing:** five mailboxes must have
-`InScope = True`; the sixth must have `InScope = False`.
-Allow time for permission propagation if needed.
-Do not grant unscoped Graph application `Mail.Send`, or leave other grants that
-broaden mailbox access.
-
-If Exchange sign-in is unavailable in Cloud Shell, run this helper from a
-PowerShell 7 administrator workstation with the same configuration and identity
-IDs, then return here after verifying scope.
-
-Continue with step 13 in this clean process; no return to the Graph session is
-needed.
+If Exchange sign-in is unavailable in Cloud Shell, run this stage from a
+PowerShell 7 administrator workstation with the same checkout/configuration,
+selected azd environment, and Azure CLI authentication. Return here only after
+verification succeeds.
 
 ### Recovering from an existing Exchange scope after a fresh deployment
 
-Deleting the previous Azure resource group or running `azd down` does **not**
-delete tenant-level Entra app registrations, enterprise applications, Exchange
-service-principal registrations, management scopes, or role assignments.
-A new azd environment/resource group is therefore not a completely clean
-Microsoft 365 tenant.
+Deleting an Azure resource group or running `azd down` does **not** delete
+tenant-level Entra apps, Exchange service-principal registrations, scopes, or
+role assignments. A fresh environment is not a completely clean Microsoft 365
+tenant.
 
-The current helper automatically reuses a scope with the exact same five
-primary SMTP address predicates, even if Exchange has normalized their order,
-case or parentheses. It uses the resolved scope's actual name and a separate
-`DemoMailSend-<principal-object-id>` assignment for each runtime identity.
-It never changes an existing scope or another identity's assignment.
+The current helper reuses a scope with exactly the same five primary SMTP
+predicates, regardless of their order, case or parentheses. Each runtime identity
+gets its own `DemoMailSend-<principal-object-id>` assignment. It never changes
+another identity's scope or assignment.
 
-If an older helper reports **"Use the existing management scope instead of
-creating a new one"** or **"management scope wasn't found"**, update
-[setup-exchange.ps1](scripts/setup-exchange.ps1) in your Cloud Shell checkout
-to the current version before retrying. Do not rerun the failing
-`New-ManagementRoleAssignment` command with a guessed scope name.
+For older-helper errors such as **"Use the existing management scope instead of
+creating a new one"** or **"management scope wasn't found"**, update the checkout,
+select the intended environment with `azd env list` /
+`azd env select <name>`, and rerun the Exchange stage above. Do not retry a failing
+assignment with a guessed scope name.
 
-In the clean Exchange PowerShell process from step 11, select the intended
-environment with `azd env list` / `azd env select <name>` if necessary. Reload
-the current identity IDs and rerun the updated helper:
-
-```powershell
-$identityClientId = (azd env get-value AZURE_IDENTITY_CLIENT_ID).Trim()
-$identityPrincipalId = (azd env get-value AZURE_IDENTITY_PRINCIPAL_ID).Trim()
-$demoConfig = Get-Content -LiteralPath (Join-Path "config" "config.json") -Raw |
-    ConvertFrom-Json
-$demoUpns = @($demoConfig.'x-demo'.users | ForEach-Object { $_.userPrincipalName })
-$outOfScopeTestUpn = Read-Host "Sixth mailbox UPN, not one of the five demo users"
-$environmentName = azd env get-value AZURE_ENV_NAME
-& (Join-Path "scripts" "setup-exchange.ps1") `
-    -ApplicationId ([guid]$identityClientId) `
-    -PrincipalObjectId ([guid]$identityPrincipalId) `
-    -DemoUpns $demoUpns `
-    -OutOfScopeTestUpn $outOfScopeTestUpn `
-    -ScopeName "$environmentName-FiveMailboxes"
-```
-
-The helper prints `Using Exchange scope '<actual-name>'` and tests authorization
-for all six mailboxes. If multiple equivalent scopes exist, review them and
-rerun with the exact existing name in `-ScopeName`. A conflicting named scope,
-runtime principal or assignment causes an explicit error instead of a change.
-Do not remove old assignments or registrations without confirming that they
-are retired and unused by other deployments.
-This error does not establish whether the web app registration was reused:
+The helper prints the resolved scope name and tests all six mailboxes.
+Multiple equivalent scopes or conflicting scopes/principals/assignments require
+manual review. For an explicitly reviewed scope name, use
+[setup-exchange.ps1](scripts/setup-exchange.ps1) directly with `-ScopeName` and
+the selected environment's runtime identity IDs.
+Do not remove old registrations or assignments until confirmed retired.
 `WEB_CLIENT_ID` identifies the web app, not the runtime identity used for Exchange.
 
-Check `Application Mail.Send`: all five demo mailboxes must have `InScope = True`
-and the sixth must have `InScope = False`. Allow permission propagation and
-repeat the tests if needed. Review additive Exchange/Entra grants as in step 12.
-Do not set `MAILBOX_SCOPE_CONFIRMED=true` until verification succeeds.
-The Exchange grant itself needs no container rebuild or redeployment.
-Continue with step 13 only after the mailbox authorization checks succeed.
+## 6. Confirm scope and deploy
 
-## 13. Deploy the application
-
-Only continue after step 12 confirms the five allowed mailboxes and the excluded
-sixth mailbox. Real delivery is enabled for this installation; this does not
-automatically execute any scenario.
+Only after the five allowed / one excluded results and additive grants have
+been reviewed:
 
 ```powershell
-azd env set MAILBOX_SCOPE_CONFIRMED true
-azd env set DELIVERY_ENABLED true
-azd deploy
+pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Deploy -ConfirmMailboxScope
 ```
 
-Wait for deployment, certificate issuance, and HTTPS readiness to succeed.
+This explicitly saves mailbox-scope confirmation, enables real delivery, and
+runs `azd deploy`. Wait for deployment, certificate issuance, and TLS-verified
+HTTPS readiness. The script prints the application URL. It does not execute
+scenarios.
 
-## 14. Open the application
+Open the URL, sign in as the operator, verify users/resources, and inspect a
+**successful dry run**. Scenarios marked `dryRun: true` remain non-executable.
+For real demo delivery, preview a reviewed `dryRun: false` scenario and explicitly
+confirm execution as the operator.
 
-```powershell
-azd env get-value PUBLIC_URL
-```
-
-Open the displayed URL, sign in as the operator, verify the resolved
-users/resources, and inspect a **successful dry run**.
-Scenarios marked `dryRun: true` remain non-executable. To send real demo content,
-use a reviewed scenario deliberately marked `dryRun: false`, preview it, and
-explicitly confirm execution as the operator.
 Each Teams author signs in separately in an isolated browser session and clicks
-**Start / resume my background Teams messages** once for the run. Afterward the
-browser can close; workers wait for dependencies and renew tokens in server
-memory. Do not sign out while expecting that session's future sends to continue.
-If Microsoft requires sign-in again, the author resumes the same run.
-After a container restart, the operator and unfinished authors must resume.
+**Start / resume my background Teams messages** once for the run. Workers then
+wait for dependencies and renew tokens in server memory; the browser may close.
+Do not sign out while expecting future sends. If sign-in is required again,
+resume the same run. After a container restart, the operator and unfinished
+authors must resume. No access or refresh tokens are stored on disk.
 
-When upgrading an older image, repeat the administrator-reviewed Teams consent
-setup in step 10 to include `offline_access`, then have authors sign in again.
-The application stores no access or refresh tokens on disk.
+When upgrading an older image, repeat the Entra stage to include `offline_access`
+and have authors sign in again.
 
 ## If deployment fails
 
 If the hook shows only `Azure CLI operation failed: deployment`, retrieve the
-recorded Azure error before retrying. The generic summary is not evidence that
-registry authentication is required.
-
-Get the resource names:
+recorded error before retrying; that summary is not evidence that registry
+authentication is required:
 
 ```powershell
 $resourceGroup = azd env get-value AZURE_RESOURCE_GROUP
 $aciName = azd env get-value ACI_NAME
-```
-
-Read the deployment and failed-operation errors without redeploying:
-
-```powershell
 az deployment group show --resource-group $resourceGroup --name aci-app `
     --query properties.error --output json
 az deployment operation group list --resource-group $resourceGroup --name aci-app `
     --query "[?properties.provisioningState=='Failed'].properties.statusMessage" --output json
 ```
 
-For `InaccessibleImage`, compare the **exact** image reference in the error with
-[config.json](config/config.json). Public access does not
-make a missing tag available. For example, if Azure requests
-`acrdefcontainer.azurecr.io/azd-m365-demo-loader:20261026-background-teams`,
-pushing only `acrdefcontainer.azurecr.io/azd-m365-demo-loader:latest` is not enough.
-Publish the requested tag from the Docker build workstation, then retry
-`azd deploy`. Do not add registry credentials to fix a missing public tag.
+For `InaccessibleImage`, compare the exact reference with
+[config.json](config/config.json). Public access does not make a missing tag
+available. Publish the requested tag on the build workstation, then retry
+`azd deploy`. Do not add credentials to fix a missing public tag.
 
-Read the application logs:
+Read logs without redeploying:
 
 ```powershell
 az container logs --resource-group $resourceGroup --name $aciName --container-name app
-```
-
-Read the HTTPS proxy logs:
-
-```powershell
 az container logs --resource-group $resourceGroup --name $aciName --container-name https
 ```
 
@@ -372,20 +227,18 @@ federation, and certificate problems.
 
 ## Updating an existing deployment
 
-Use your existing checkout and select its saved environment:
+Select its saved environment:
 
 ```powershell
 azd env list
 azd env select (Read-Host "Existing environment name")
 ```
 
-Before redeploying, change the app image in
-[config.json](config/config.json) to a newly published
-unique tag or digest. Reusing unchanged `:latest` does not reliably refresh ACI.
-See [update instructions](README.md#updating-an-installed-environment).
+Before redeploying, change the app image in [config.json](config/config.json)
+to a newly published unique tag or digest. Reusing unchanged `:latest` does not
+reliably refresh ACI. See [update instructions](README.md#updating-an-installed-environment).
 
-On the **Docker build workstation**, build and push the exact configured app
-reference (not just `:latest`):
+On the **Docker build workstation**, publish the exact configured reference:
 
 ```powershell
 $images = Get-Content -LiteralPath (Join-Path "config" "config.json") -Raw |
@@ -396,21 +249,21 @@ docker push $images.services.app.image
 if ($LASTEXITCODE -ne 0) { throw "App image push failed; do not deploy." }
 ```
 
-Your build workstation may need publisher authentication for `docker push`;
-this is separate from ACI's anonymous pull and requires no runtime credentials.
-If the assistant already built that exact local tag, only the push is needed.
-Then return to **Cloud Shell** and ensure its
-[config.json](config/config.json) contains the same pushed
-reference before running the deployment below. `azd deploy` does not build,
-push, or create missing image tags.
+Publisher authentication is separate from ACI's anonymous pull. Return to Cloud
+Shell and ensure its configuration contains the same pushed reference.
+Deployment does not build, push, or create missing tags.
 
 Export reports first: ACI updates can erase the temporary journal and
 duplicate-send protection. Review prior sends before running scenarios again.
-Older versions provisioned Key Vault and Log Analytics. Incremental provisioning
-does not remove those existing resources; review and remove unused legacy
-resources separately if minimizing ongoing cost. Preserve any required logs and
-secrets, and respect legacy Key Vault retention/purge protection.
+Incremental provisioning does not remove legacy Key Vault / Log Analytics
+resources. Review unused resources separately, preserving required logs/secrets
+and respecting retention/purge protection.
+
+For an existing installation with already-reviewed permissions:
 
 ```powershell
 azd deploy
 ```
+
+If changing the certificate-notice email, rerun the Deploy stage with explicit
+scope confirmation to save the updated email before deploying.

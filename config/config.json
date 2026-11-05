@@ -7,6 +7,10 @@
       "image": "acrdefcontainer.azurecr.io/caddy:2.11.4-alpine"
     }
   },
+  "x-setup": {
+    "acmeEmail": "",
+    "outOfScopeTestUpn": ""
+  },
   "x-demo": {
     "users": [
       {

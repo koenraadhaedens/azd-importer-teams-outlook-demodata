@@ -37,6 +37,8 @@ jobs:
       - shell: pwsh
         run: ./tests/prerequisites.tests.ps1
       - shell: pwsh
+        run: ./tests/setup.tests.ps1
+      - shell: pwsh
         run: ./tests/registration.tests.ps1
       - shell: pwsh
         run: ./tests/exchange.tests.ps1

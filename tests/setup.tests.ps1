@@ -1,0 +1,189 @@
+$ErrorActionPreference = "Stop"
+$scriptPath = Join-Path (Join-Path $PSScriptRoot "..") "scripts/setup.ps1"
+$configPath = Join-Path ([IO.Path]::GetTempPath()) ("setup-test-" + [guid]::NewGuid() + ".json")
+$savedEnvironment = @{}
+foreach ($name in @("OPERATOR_IDS", "ACME_EMAIL", "DEMO_TENANT_CONFIRMED",
+    "DELIVERY_ENABLED", "MAILBOX_SCOPE_CONFIRMED")) {
+    $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+}
+function Assert {
+    param([bool]$Condition, [string]$Message)
+    if (-not $Condition) { throw $Message }
+}
+function Write-TestConfig {
+    param([string]$Email = "notices@example.org", [string]$Excluded = "excluded@example.org")
+    @{
+        "x-setup" = @{ acmeEmail = $Email; outOfScopeTestUpn = $Excluded }
+        "x-demo" = @{ users = @((1..5) | ForEach-Object {
+            @{ userPrincipalName = "user$_@example.org" }
+        }) }
+    } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configPath
+}
+function Reset-State {
+    $global:setupMock = @{
+        calls = [System.Collections.Generic.List[object]]::new()
+        provisionFails = $false
+        valueFails = $false
+        values = @{
+            AZURE_SUBSCRIPTION_ID = [guid]::NewGuid().ToString()
+            AZURE_TENANT_ID = [guid]::NewGuid().ToString()
+            DEMO_TENANT_CONFIRMED = "true"
+            PUBLIC_URL = "https://demo.example.org"
+            WEB_CLIENT_ID = [guid]::NewGuid().ToString()
+            AZURE_IDENTITY_CLIENT_ID = [guid]::NewGuid().ToString()
+            AZURE_IDENTITY_PRINCIPAL_ID = [guid]::NewGuid().ToString()
+            AZURE_ENV_NAME = "configured-demo"
+            OPERATOR_IDS = "00000000-0000-0000-0000-000000000001"
+        }
+        assigned = [System.Collections.Generic.List[string]]::new()
+        tested = [System.Collections.Generic.List[string]]::new()
+        exchangePrincipal = $null
+    }
+    Write-TestConfig
+}
+function Expect-Failure {
+    param([hashtable]$Parameters, [string]$Message)
+    $failure = $null
+    try { & $scriptPath -Config $configPath @Parameters | Out-Null } catch {
+        $failure = $_.Exception.Message
+    }
+    Assert ($failure -and $failure.Contains($Message)) "Expected '$Message', received '$failure'"
+}
+function global:az {
+    $global:LASTEXITCODE = 0
+    if ($args[0] -eq "ad" -and $args[1] -eq "signed-in-user") {
+        return "00000000-0000-0000-0000-000000000001"
+    }
+    if ($args[0] -eq "account") { return $global:setupMock.values.AZURE_TENANT_ID }
+    if ($args[0] -eq "ad" -and $args[1] -eq "user") {
+        Assert ($args[4] -match '^user([1-5])@example.org$') "Only the five demo users should be assigned"
+        return "00000000-0000-0000-0000-00000000001$($Matches[1])"
+    }
+    throw "Unexpected Azure call: $args"
+}
+function global:azd {
+    $state = $global:setupMock
+    $state.calls.Add(@($args))
+    $global:LASTEXITCODE = 0
+    if ($args[0] -eq "provision") {
+        Assert ($env:ACME_EMAIL -eq "notices@example.org") "Provision must read the configured certificate email"
+        Assert ($env:DELIVERY_ENABLED -eq "false" -and $env:MAILBOX_SCOPE_CONFIRMED -eq "false") "Provision must disable real delivery"
+        if ($state.provisionFails) { $global:LASTEXITCODE = 1 }
+    } elseif ($args[0] -eq "env" -and $args[1] -eq "get-value") {
+        if ($state.valueFails) { $global:LASTEXITCODE = 1; return }
+        if (-not $state.values.ContainsKey([string]$args[2])) { throw "Unexpected azd value: $($args[2])" }
+        return $state.values[[string]$args[2]]
+    } elseif ($args[0] -eq "env" -and $args[1] -eq "set") {
+        $state.values[[string]$args[2]] = [string]$args[3]
+    } elseif ($args[0] -eq "deploy") {
+        Assert ($state.values.ACME_EMAIL -eq "notices@example.org") "Deploy must use the configured certificate email"
+        Assert ($state.values.MAILBOX_SCOPE_CONFIRMED -eq "true" -and $state.values.DELIVERY_ENABLED -eq "true") "Delivery requires explicit confirmation"
+    } else { throw "Unexpected azd call: $args" }
+}
+function global:Get-Module {
+    param($Name, [switch]$ListAvailable)
+    if ($ListAvailable) { return @{ Name = $Name } }
+}
+function global:Connect-MgGraph { param($Scopes, [switch]$NoWelcome) }
+function global:Get-MgServicePrincipal {
+    param($Filter)
+    return [pscustomobject]@{ Id = "test-principal"; AppRoleAssignmentRequired = $true }
+}
+function global:Get-MgServicePrincipalAppRoleAssignedTo { param($ServicePrincipalId, [switch]$All) }
+function global:New-MgServicePrincipalAppRoleAssignedTo {
+    param($ServicePrincipalId, $BodyParameter)
+    $global:setupMock.assigned.Add([string]$BodyParameter.PrincipalId)
+}
+function global:Get-MgOauth2PermissionGrant { param($Filter) }
+function global:New-MgOauth2PermissionGrant { param($BodyParameter) }
+function global:Connect-ExchangeOnline { param([bool]$ShowBanner) }
+function global:Get-EXOMailbox {
+    param($Identity)
+    return [pscustomobject]@{ PrimarySmtpAddress = [string]$Identity }
+}
+function global:Get-ServicePrincipal {}
+function global:New-ServicePrincipal {
+    param($AppId, $ObjectId, $DisplayName)
+    $global:setupMock.exchangePrincipal = @{ AppId = $AppId; ObjectId = $ObjectId }
+}
+function global:Get-ManagementScope {}
+function global:New-ManagementScope {
+    [CmdletBinding()]
+    param($Name, $RecipientRestrictionFilter)
+    return [pscustomobject]@{ Name = $Name; RecipientFilter = $RecipientRestrictionFilter }
+}
+function global:Get-ManagementRoleAssignment {
+    [CmdletBinding()]
+    param($Identity, $RoleAssignee)
+}
+function global:New-ManagementRoleAssignment {
+    [CmdletBinding()]
+    param($Name, $App, $Role, $CustomResourceScope)
+    Assert ($CustomResourceScope -eq "configured-demo-FiveMailboxes") "Read scope name from the selected environment"
+}
+function global:Test-ServicePrincipalAuthorization {
+    param($Identity, $Resource)
+    $global:setupMock.tested.Add([string]$Resource)
+    return [pscustomobject]@{ Resource = $Resource; InScope = $Resource -ne "excluded@example.org" }
+}
+try {
+    Reset-State
+    Expect-Failure @{ Stage = "Provision" } "ConfirmDemoTenant"
+    Assert ($global:setupMock.calls.Count -eq 0) "Unconfirmed tenant must not provision"
+    & $scriptPath -Stage Provision -Config $configPath -ConfirmDemoTenant
+    Assert ($global:setupMock.calls.Count -eq 6) "Provision must save all five settings without copy-pasting"
+    Assert ($global:setupMock.values.OPERATOR_IDS -eq "00000000-0000-0000-0000-000000000001") "Resolve the signed-in operator automatically"
+
+    Reset-State
+    $global:setupMock.provisionFails = $true
+    Expect-Failure @{ Stage = "Provision"; ConfirmDemoTenant = $true } "provision failed"
+    Assert ($global:setupMock.calls.Count -eq 1) "Failed provision must not report success or persist settings"
+
+    Reset-State
+    Write-TestConfig -Email ""
+    Expect-Failure @{ Stage = "Provision"; ConfirmDemoTenant = $true } "x-setup.acmeEmail"
+    Assert ($global:setupMock.calls.Count -eq 0) "Invalid configuration must fail before Azure operations"
+    Write-TestConfig -Excluded "USER1@EXAMPLE.ORG"
+    Expect-Failure @{ Stage = "Exchange" } "existing sixth mailbox"
+    Write-TestConfig -Excluded ""
+    Expect-Failure @{ Stage = "Exchange" } "existing sixth mailbox"
+
+    Reset-State
+    Expect-Failure @{ Stage = "Deploy" } "ConfirmMailboxScope"
+    Assert (@($global:setupMock.calls | Where-Object { $_[0] -eq "deploy" -or $_[1] -eq "set" }).Count -eq 0) "Unconfirmed scope must not enable delivery"
+    & $scriptPath -Stage Deploy -Config $configPath -ConfirmMailboxScope
+    Assert ($global:setupMock.calls[-2][0] -eq "deploy") "Confirmed setup must run azd deploy"
+
+    Reset-State
+    $global:setupMock.valueFails = $true
+    Expect-Failure @{ Stage = "Deploy"; ConfirmMailboxScope = $true } "get-value AZURE_SUBSCRIPTION_ID failed"
+    Assert ($global:setupMock.calls.Count -eq 1) "Failed environment lookup must stop deployment"
+
+    Reset-State
+    & $scriptPath -Stage Entra -Config $configPath
+    Assert ($global:setupMock.assigned.Count -eq 6) "Assign the configured operator and five demo users"
+    Assert ($global:setupMock.assigned[0] -eq $global:setupMock.values.OPERATOR_IDS) "Use the saved operator, not a different signed-in administrator"
+
+    Reset-State
+    & $scriptPath -Stage Exchange -Config $configPath | Out-Null
+    Assert ($global:setupMock.tested.Count -eq 6 -and
+        $global:setupMock.tested[-1] -eq "excluded@example.org") "Read and test the excluded mailbox from configuration"
+    Assert ($global:setupMock.exchangePrincipal.AppId -eq $global:setupMock.values.AZURE_IDENTITY_CLIENT_ID -and
+        $global:setupMock.exchangePrincipal.ObjectId -eq $global:setupMock.values.AZURE_IDENTITY_PRINCIPAL_ID) "Use runtime identity IDs, not the web app ID"
+    Write-Host "PASS: configuration validation, operator resolution, saved settings, confirmation gates and native failure handling."
+} finally {
+    foreach ($name in $savedEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+    }
+    if (Test-Path -LiteralPath $configPath) { Remove-Item -LiteralPath $configPath }
+    Remove-Item Function:\az, Function:\azd
+    foreach ($name in @("Get-Module", "Connect-MgGraph", "Get-MgServicePrincipal",
+        "Get-MgServicePrincipalAppRoleAssignedTo", "New-MgServicePrincipalAppRoleAssignedTo",
+        "Get-MgOauth2PermissionGrant", "New-MgOauth2PermissionGrant", "Connect-ExchangeOnline",
+        "Get-EXOMailbox", "Get-ServicePrincipal", "New-ServicePrincipal", "Get-ManagementScope",
+        "New-ManagementScope", "Get-ManagementRoleAssignment", "New-ManagementRoleAssignment",
+        "Test-ServicePrincipalAuthorization")) {
+        Remove-Item "Function:\$name"
+    }
+    Remove-Variable setupMock -Scope Global -ErrorAction SilentlyContinue
+}

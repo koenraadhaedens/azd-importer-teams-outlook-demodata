@@ -99,6 +99,9 @@ See [Entra setup](docs/entra-setup.md) for bootstrap and migration details.
 Configure `x-demo.users`, `x-demo.channels`, and container-image `services` in
 [config/config.json](config/config.json); exactly five distinct user keys and UPNs
 are mandatory. Never put credentials in this file.
+The `x-setup.acmeEmail` and `x-setup.outOfScopeTestUpn` fields supply certificate
+notices and the excluded sixth mailbox test. Fill them once before using
+[setup.ps1](scripts/setup.ps1); the excluded mailbox is not a demo user.
 Keep completed configurations out of public commits.
 
 Configuration is JSON so the app, deployment tools, and Cloud Shell can read the
@@ -212,8 +215,23 @@ and a new azd environment. No settings from another deployment are required.
 
 ### Azure portal Cloud Shell (PowerShell)
 
-For a copy-paste walkthrough using already-published images, see
+For the recommended staged-script setup using already-published images, see
 [Install from Azure Cloud Shell](installtocloudshell.md).
+After configuring the two `x-setup` emails and authenticating azd/Azure CLI,
+run each command only after the previous stage succeeds:
+
+```powershell
+pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Provision -ConfirmDemoTenant
+pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Entra -InstallModules
+pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Exchange -InstallModules
+# Run only after reviewing the five allowed and one excluded mailbox results.
+pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Deploy -ConfirmMailboxScope
+```
+
+The script resolves operator/user IDs, reads generated identity IDs, and saves
+settings automatically. Separate processes isolate Graph and Exchange modules.
+Provisioning leaves delivery disabled; the final command explicitly enables it.
+The detailed manual commands below remain available for custom administration.
 
 #### 1. Prepare the tenant and container images
 

@@ -1,6 +1,6 @@
 param(
-    [Parameter(Mandatory)][ValidateSet("Provision", "Entra", "Exchange", "Deploy")][string]$Stage,
-    [string]$Config = (Join-Path (Join-Path $PSScriptRoot "..") "config/config.json"),
+    [Parameter(Mandatory)][ValidateSet("Configure", "Provision", "Entra", "Exchange", "Deploy")][string]$Stage,
+    [string]$Config,
     [switch]$ConfirmDemoTenant,
     [switch]$ConfirmMailboxScope,
     [switch]$InstallModules
@@ -8,25 +8,49 @@ param(
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw "PowerShell 7 or later is required." }
-$configPath = (Resolve-Path -LiteralPath $Config -ErrorAction Stop).Path
-$configuration = Get-Content -LiteralPath $configPath -Raw -ErrorAction Stop |
-    ConvertFrom-Json -ErrorAction Stop
-$demoUpns = @($configuration.'x-demo'.users | ForEach-Object {
-    [string]$_.userPrincipalName
-})
-if ($demoUpns.Count -ne 5 -or
-    @($demoUpns | Where-Object { $_ -notmatch '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+$' }).Count -gt 0 -or
-    @($demoUpns | Sort-Object -Unique).Count -ne 5) {
-    throw "Configure exactly five distinct demo-user UPNs in x-demo.users."
+. (Join-Path $PSScriptRoot "deployment-config.ps1")
+if (-not $Config) {
+    $Config = if ($env:DEMO_CONFIG_FILE) { $env:DEMO_CONFIG_FILE } else {
+        Join-Path (Join-Path $PSScriptRoot "..") "config/config.local.json"
+    }
 }
+$configPath = [IO.Path]::GetFullPath($Config)
+if ($Stage -eq "Configure" -or ($Stage -eq "Provision" -and -not (Test-Path -LiteralPath $configPath))) {
+    if (Test-Path -LiteralPath $configPath) {
+        $null = Read-DeploymentConfiguration -Path $configPath
+        Write-Host "Existing private configuration reused. Edit that ignored file to change settings."
+    } else {
+        $template = Join-Path (Join-Path $PSScriptRoot "..") "config/config.json"
+        if ($configPath -eq [IO.Path]::GetFullPath($template)) { throw "Do not store trainer settings in the tracked template." }
+        $configuration = Get-Content -LiteralPath $template -Raw | ConvertFrom-Json
+        $configuration.'x-setup'.acmeEmail = Read-Host "Email for certificate notices"
+        $configuration.'x-setup'.outOfScopeTestUpn = Read-Host "Existing sixth mailbox UPN (excluded from demo access)"
+        foreach ($user in $configuration.'x-demo'.users) {
+            $user.displayName = Read-Host "Display name for scenario user '$($user.key)'"
+            $user.userPrincipalName = Read-Host "Demo mailbox UPN for '$($user.key)'"
+        }
+        $channels = [ordered]@{}
+        while ($alias = Read-Host "Teams channel alias (leave blank when finished; email-only is allowed)") {
+            if ($channels.Contains($alias)) { throw "Channel aliases must be distinct." }
+            $channels[$alias] = @{
+                teamId = Read-Host "Team UUID"
+                channelId = Read-Host "Teams channel ID"
+            }
+        }
+        $configuration.'x-demo'.channels = [pscustomobject]$channels
+        $directory = Split-Path -Parent $configPath
+        $null = New-Item -ItemType Directory -Path $directory -Force
+        Write-PrivateJsonFile -Path $configPath -Value $configuration
+        $null = Read-DeploymentConfiguration -Path $configPath
+        Write-Host "Trainer settings saved in the private local file. Do not commit or share it."
+    }
+    if ($Stage -eq "Configure") { return }
+}
+$configuration = Read-DeploymentConfiguration -Path $configPath
+$env:DEMO_CONFIG_FILE = $configPath
+$demoUpns = @($configuration.'x-demo'.users.userPrincipalName)
 $acmeEmail = [string]$configuration.'x-setup'.acmeEmail
-if ($acmeEmail -notmatch '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$') {
-    throw "Configure x-setup.acmeEmail in $configPath for certificate notices."
-}
 $excludedUpn = [string]$configuration.'x-setup'.outOfScopeTestUpn
-if ($excludedUpn -notmatch '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+$' -or $excludedUpn -in $demoUpns) {
-    throw "Configure x-setup.outOfScopeTestUpn as an existing sixth mailbox, not a demo user."
-}
 
 function Invoke-SetupAzd {
     param([string[]]$Arguments)
@@ -73,7 +97,7 @@ try {
         $env:DELIVERY_ENABLED = "false"
         $env:MAILBOX_SCOPE_CONFIRMED = "false"
         Invoke-SetupAzd @("provision") | Out-Host
-        foreach ($name in @("OPERATOR_IDS", "ACME_EMAIL", "DEMO_TENANT_CONFIRMED",
+        foreach ($name in @("OPERATOR_IDS", "DEMO_CONFIG_FILE", "DEMO_TENANT_CONFIRMED",
             "DELIVERY_ENABLED", "MAILBOX_SCOPE_CONFIRMED")) {
             Invoke-SetupAzd @("env", "set", $name, [Environment]::GetEnvironmentVariable($name)) | Out-Host
         }
@@ -116,7 +140,7 @@ try {
         if ((Get-SetupValue "DEMO_TENANT_CONFIRMED") -ne "true") {
             throw "The selected environment must have DEMO_TENANT_CONFIRMED=true."
         }
-        Invoke-SetupAzd @("env", "set", "ACME_EMAIL", $acmeEmail) | Out-Host
+        Invoke-SetupAzd @("env", "set", "DEMO_CONFIG_FILE", $configPath) | Out-Host
         Invoke-SetupAzd @("env", "set", "MAILBOX_SCOPE_CONFIRMED", "true") | Out-Host
         Invoke-SetupAzd @("env", "set", "DELIVERY_ENABLED", "true") | Out-Host
         Invoke-SetupAzd @("deploy") | Out-Host

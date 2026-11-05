@@ -1,5 +1,6 @@
 """Image-only startup/proxy check with an injected gateway; never packaged in runtime."""
 
+import json
 from uuid import uuid4
 
 import uvicorn
@@ -32,6 +33,19 @@ if __name__ == "__main__":
         demo_tenant_confirmed=True,
         public_url="https://localhost:8443",
         data_dir="/tmp/demo-loader-smoke",
+        demo_config_json=json.dumps(
+            {
+                "users": [
+                    {
+                        "key": key,
+                        "displayName": key.title(),
+                        "userPrincipalName": f"{key}@example.org",
+                    }
+                    for key in ("adele", "alex", "christie", "diego", "megan")
+                ],
+                "channels": {},
+            }
+        ),
     )
     uvicorn.run(
         create_app(config, SmokeGateway()),

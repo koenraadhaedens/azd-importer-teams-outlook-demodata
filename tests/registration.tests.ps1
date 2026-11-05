@@ -60,6 +60,14 @@ function global:az {
         Assert (@($state.grants | Where-Object appRoleId -eq $state.userReadRoleId).Count -eq 1) "Assign User.Read.All before any ACI initialization/deployment"
         $file = $args[[array]::IndexOf($args, "--parameters") + 1].Substring(1)
         $parameters = (Get-Content -Raw $file | ConvertFrom-Json).parameters
+        Assert ($parameters.acmeEmail.value -eq "operator@example.org") "Read certificate email from private settings"
+        $demo = $parameters.demoConfigJson.value | ConvertFrom-Json
+        Assert ($demo.users.Count -eq 5 -and -not $demo.PSObject.Properties["x-setup"]) "Inject only user/channel mappings, not setup emails"
+        Assert ($parameters.demoConfigJson.value -notin $args -and "operator@example.org" -notin $args) "Pass private settings via a parameter file, not raw CLI arguments"
+        if (-not $IsWindows) {
+            Assert ([IO.File]::GetUnixFileMode($file) -eq
+                ([IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite)) "Temporary ARM parameters must be owner-only"
+        }
         Assert (-not $parameters.PSObject.Properties["logWorkspaceName"]) "ACI deployment must not require Log Analytics"
         $state.deployments.Add($parameters)
         $state.containerExists = $true
@@ -139,6 +147,7 @@ function global:Start-Sleep { param([int]$Seconds) }
 $oldId = $env:WEB_CLIENT_ID
 $environment = @{}
 $registrationScript = Join-Path (Join-Path $PSScriptRoot "..") "scripts/register-web-app.ps1"
+$privateConfig = Join-Path ([IO.Path]::GetTempPath()) ("registration-" + [guid]::NewGuid() + ".json")
 try {
     $state = $global:registrationMock
     $env:WEB_CLIENT_ID = ""
@@ -190,7 +199,22 @@ try {
     try { & $registrationScript @parameters } catch { $failed = $true }
     Assert $failed "Graph authorization failure must be explicit without login fallback"
     $state.denyGraph = $false
+    . (Join-Path (Join-Path $PSScriptRoot "..") "scripts/deployment-config.ps1")
+    Write-PrivateJsonFile -Path $privateConfig -Value @{
+        services = @{
+            app = @{ image = "example.azurecr.io/app:test" }
+            caddy = @{ image = "example.azurecr.io/caddy:test" }
+        }
+        "x-setup" = @{ acmeEmail = "operator@example.org"; outOfScopeTestUpn = "excluded@example.org" }
+        "x-demo" = @{
+            users = @((1..5) | ForEach-Object {
+                @{ key = "user$_"; displayName = "User $_"; userPrincipalName = "user$_@example.org" }
+            })
+            channels = @{}
+        }
+    }
     $values = @{
+        DEMO_CONFIG_FILE = $privateConfig
         AZURE_RESOURCE_GROUP = "rg-test"
         AZURE_IDENTITY_RESOURCE_ID = $state.identityId
         AZURE_IDENTITY_PRINCIPAL_ID = $state.principal
@@ -292,6 +316,7 @@ try {
     foreach ($name in $environment.Keys) {
         [Environment]::SetEnvironmentVariable($name, $environment[$name])
     }
+    if (Test-Path -LiteralPath $privateConfig) { Remove-Item -LiteralPath $privateConfig }
     Remove-Item Function:\az, Function:\azd, Function:\Invoke-WebRequest, Function:\Start-Sleep -ErrorAction SilentlyContinue
     Remove-Variable registrationMock -Scope Global
 }

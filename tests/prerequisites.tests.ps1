@@ -3,6 +3,9 @@ $previousConfirmation = $env:DEMO_TENANT_CONFIRMED
 $previousOperators = $env:OPERATOR_IDS
 $previousEmail = $env:ACME_EMAIL
 $previousImagePull = $env:USE_MANAGED_IDENTITY_FOR_IMAGE_PULL
+$previousConfigFile = $env:DEMO_CONFIG_FILE
+$env:DEMO_CONFIG_FILE = ""
+$privateConfig = Join-Path ([IO.Path]::GetTempPath()) ("prerequisite-" + [guid]::NewGuid() + ".json")
 $exampleOperatorId = [guid]::NewGuid().ToString()
 $global:prerequisiteMock = @{}
 function global:azd {}
@@ -93,11 +96,38 @@ try {
         }
         Write-Host "PASS: $($case.name)"
     }
+    . (Join-Path (Join-Path $PSScriptRoot "..") "scripts/deployment-config.ps1")
+    Write-PrivateJsonFile -Path $privateConfig -Value @{
+        services = @{
+            app = @{ image = "example.azurecr.io/app:test" }
+            caddy = @{ image = "example.azurecr.io/caddy:test" }
+        }
+        "x-setup" = @{ acmeEmail = "notices@example.org"; outOfScopeTestUpn = "excluded@example.org" }
+        "x-demo" = @{
+            users = @((1..5) | ForEach-Object {
+                @{ key = "user$_"; displayName = "User $_"; userPrincipalName = "user$_@example.org" }
+            })
+            channels = @{}
+        }
+    }
+    $env:DEMO_CONFIG_FILE = $privateConfig
+    $env:ACME_EMAIL = ""
+    $env:OPERATOR_IDS = $exampleOperatorId
+    $env:DEMO_TENANT_CONFIRMED = "true"
+    $env:USE_MANAGED_IDENTITY_FOR_IMAGE_PULL = ""
+    $global:prerequisiteMock = @{ installed = $true; versionChecks = 0; installCalls = 0 }
+    & (Join-Path $PSScriptRoot "../scripts/prerequisites.ps1")
+    if ($env:ACME_EMAIL -ne "notices@example.org" -or $global:prerequisiteMock.versionChecks -ne 1) {
+        throw "Preprovision must obtain certificate email privately from the configured file."
+    }
+    Write-Host "PASS: private configuration supplies certificate email without azd setting arguments"
 } finally {
     $env:DEMO_TENANT_CONFIRMED = $previousConfirmation
     $env:OPERATOR_IDS = $previousOperators
     $env:ACME_EMAIL = $previousEmail
     $env:USE_MANAGED_IDENTITY_FOR_IMAGE_PULL = $previousImagePull
+    $env:DEMO_CONFIG_FILE = $previousConfigFile
+    if (Test-Path -LiteralPath $privateConfig) { Remove-Item -LiteralPath $privateConfig }
     Remove-Item Function:\az, Function:\azd
     Remove-Variable prerequisiteMock -Scope Global
 }

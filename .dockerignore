@@ -9,8 +9,7 @@ data
 .pytest_cache
 .mypy_cache
 .ruff_cache
-config/*.local.yaml
-config/*.local.json
+config
 *.pem
 *.pfx
 *.key

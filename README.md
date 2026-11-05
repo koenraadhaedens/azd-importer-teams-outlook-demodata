@@ -96,16 +96,16 @@ and app-role-assignment authorization. **Delegated Teams consent and enterprise-
 assignments remain administrator steps**, as does Exchange mailbox scope setup.
 See [Entra setup](docs/entra-setup.md) for bootstrap and migration details.
 
-Configure `x-demo.users`, `x-demo.channels`, and container-image `services` in
-[config/config.json](config/config.json); exactly five distinct user keys and UPNs
-are mandatory. Never put credentials in this file.
-The `x-setup.acmeEmail` and `x-setup.outOfScopeTestUpn` fields supply certificate
-notices and the excluded sixth mailbox test. Fill them once before using
-[setup.ps1](scripts/setup.ps1); the excluded mailbox is not a demo user.
-Keep completed configurations out of public commits.
+The tracked [config/config.json](config/config.json) is a fictional template,
+not trainer settings. Run [setup.ps1](scripts/setup.ps1) with `-Stage Configure`
+to answer the certificate email, excluded sixth mailbox, five demo-user and
+optional channel questions once. It creates ignored `config/config.local.json`
+with user-only file permissions. Subsequent stages reuse that file.
+Never put real email addresses, tenant mappings or credentials in the tracked
+template. The excluded mailbox is only an authorization test, not a demo user.
 
-Configuration is JSON so the app, deployment tools, and Cloud Shell can read the
-same file without a PowerShell YAML module. Scenario documents remain YAML.
+Configuration is JSON so deployment tools and Cloud Shell need no PowerShell
+YAML module. Scenario documents remain YAML.
 The `x-demo` extension keeps the file compatible with Docker Compose while
 grouping the user and channel mappings.
 Channel mappings contain a `teamId` UUID and a `channelId`; IDs belong in this
@@ -126,19 +126,22 @@ the channel section looks like this; retain `services` and the five `x-demo.user
 }
 ```
 
-The Docker build packages this JSON file into the app image. After changing
-user/channel mappings, build and manually publish a new image and select its new
-tag/digest before deployment. Custom runtime paths use `CONFIG_FILE`; offline
-validation uses `--config` (PowerShell: `-Config`). These replace `USERS_FILE` /
-`RESOURCES_FILE` and `--users` / `--resources`. Custom files must contain the same
-combined structure; YAML configuration is not read.
+No configuration files are included in the Docker build context or image.
+Deployment reads the private file and injects only `x-demo` through ACI's
+`DEMO_CONFIG_JSON` secure environment value. The certificate email is also a
+secure value; the excluded test mailbox stays in the administrator's local file.
+One published image works for every trainer. Updating mappings requires
+redeployment and permission review, **not an image rebuild**.
+Custom local runtime paths use `CONFIG_FILE`; offline validation uses `--config`
+(PowerShell: `-Config`). Both default to `config/config.local.json`.
+Invalid injected configuration fails closed, without falling back to a file.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --require-hashes -r requirements.lock
 python -m pip install -e ".[dev]"
-python -m demo_loader.cli examples\demo-scenario.yaml
+python -m demo_loader.cli examples\demo-scenario.yaml --config config\config.json
 pytest -q
 ```
 
@@ -167,9 +170,10 @@ The Caddy image also supplies `/bin/sh`, `chown` and `chmod` as root for the
 one-time journal-volume permissions initializer; the application stays nonroot.
 
 **Images are built/pushed manually.** Deployment does not create an ACR or
-build, push, retag or resolve an image. Configure actual non-secret user/resource
-mappings before building the app; they are packaged into the image. Rebuild and
-push manually after source or packaged configuration changes.
+build, push, retag or resolve an image. Images contain no trainer configuration.
+Only source/dependency changes require rebuilding. Trainers select the published
+references in their private file; deployment explicitly passes those references
+instead of embedding that file in Bicep.
 
 Example manual publication (requires registry push rights):
 
@@ -217,10 +221,11 @@ and a new azd environment. No settings from another deployment are required.
 
 For the recommended staged-script setup using already-published images, see
 [Install from Azure Cloud Shell](installtocloudshell.md).
-After configuring the two `x-setup` emails and authenticating azd/Azure CLI,
+After authenticating azd/Azure CLI,
 run each command only after the previous stage succeeds:
 
 ```powershell
+pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Configure
 pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Provision -ConfirmDemoTenant
 pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Entra -InstallModules
 pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Exchange -InstallModules
@@ -228,8 +233,9 @@ pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Exchange -InstallModules
 pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Deploy -ConfirmMailboxScope
 ```
 
-The script resolves operator/user IDs, reads generated identity IDs, and saves
-settings automatically. Separate processes isolate Graph and Exchange modules.
+The script asks for trainer details once, resolves operator/user IDs, reads
+generated identity IDs, and saves only the private file path and operational
+flags to azd. Separate processes isolate Graph and Exchange modules.
 Provisioning leaves delivery disabled; the final command explicitly enables it.
 The detailed manual commands below remain available for custom administration.
 
@@ -239,8 +245,7 @@ The detailed manual commands below remain available for custom administration.
 - Pre-authorize the **deployment identity** for application registration in
   Entra as described in [Entra setup](docs/entra-setup.md). Do not grant
   application-administration permissions to the runtime ACI identity.
-- Configure the real five-user/resource mappings, build the application image
-  and manually publish both images as described in
+- Use the shared configuration-free images published as described in
   [Docker and Caddy HTTPS](#docker-and-caddy-https). Cloud Shell deployment needs
   neither a Python environment nor Docker; building images happens separately.
 - Pre-authorize the deployer for the automatic runtime `User.Read.All` grant;
@@ -266,13 +271,14 @@ CLI is normally authenticated by the portal. Authenticate azd if prompted; its
 authentication is separate from Azure CLI. On a local PowerShell 7 terminal,
 install the prerequisite tools and run `az login` and `azd auth login` first.
 
-Edit [config/config.json](config/config.json) to match the
-two published image references before provisioning.
+Run `pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Configure` and, if needed,
+edit `services` in the ignored local file to match the published image references.
+Do not edit the tracked template with trainer details.
 
 #### 3. Create and configure a new environment
 
-Choose a unique environment name. Replace the subscription ID and administrative
-email below with real values:
+Choose a unique environment name and replace the subscription ID below.
+Keep certificate email and mappings in the private file, not azd command arguments:
 
 ```powershell
 azd env new my-demo-loader
@@ -280,7 +286,8 @@ azd env set AZURE_SUBSCRIPTION_ID "<your-subscription-id>"
 azd env set AZURE_LOCATION westeurope
 # Only after confirming this is the isolated CDX tenant:
 azd env set DEMO_TENANT_CONFIRMED true
-azd env set ACME_EMAIL "your-admin-mailbox@example.org"
+$configPath = (Resolve-Path config\config.local.json).Path
+azd env set DEMO_CONFIG_FILE $configPath
 
 # Allow the signed-in user to operate the application:
 $operatorId = az ad signed-in-user show --query id --output tsv
@@ -354,12 +361,12 @@ This error does not prove that the web app registration was reused:
 `AZURE_IDENTITY_PRINCIPAL_ID` identify the runtime principal used for Exchange.
 
 For command-line assignments, read the five existing demo users from
-[config/config.json](config/config.json), rather than maintaining a
+the ignored `config/config.local.json`, rather than maintaining a
 separate UPN list. PowerShell's JSON reader is built in; no converter module is
 needed:
 
 ```powershell
-$demoConfig = Get-Content (Join-Path "config" "config.json") -Raw -ErrorAction Stop |
+$demoConfig = Get-Content (Join-Path "config" "config.local.json") -Raw -ErrorAction Stop |
     ConvertFrom-Json -ErrorAction Stop
 $demoUpns = @($demoConfig.'x-demo'.users | ForEach-Object {
     if ([string]::IsNullOrWhiteSpace($_.userPrincipalName)) {
@@ -368,7 +375,7 @@ $demoUpns = @($demoConfig.'x-demo'.users | ForEach-Object {
     $_.userPrincipalName
 })
 if ($demoUpns.Count -ne 5 -or @($demoUpns | Sort-Object -Unique).Count -ne 5) {
-    throw "config/config.json must contain exactly five distinct demo-user UPNs."
+    throw "Private configuration must contain exactly five distinct demo-user UPNs."
 }
 $demoUpns
 ```
@@ -591,8 +598,8 @@ ruff format --check src tests scripts
 ruff check src tests scripts
 mypy src
 pytest -q
-python -m demo_loader.cli examples\demo-scenario.yaml
-python -m demo_loader.cli skills\demo-scenario-creator\examples\scenario.yaml
+python -m demo_loader.cli examples\demo-scenario.yaml --config config\config.json
+python -m demo_loader.cli skills\demo-scenario-creator\examples\scenario.yaml --config config\config.json
 python scripts\check-repository.py
 bandit -q -r src -c pyproject.toml
 pip-audit -r requirements.lock

@@ -20,6 +20,8 @@ foreach ($name in @("JOURNAL_BLOB_URL", "AZURE_STORAGE_ACCOUNT_NAME", "AZURE_CER
     Assert (-not $main.outputs.PSObject.Properties[$name]) "Obsolete infrastructure output: $name"
 }
 $aci = Build-Template "infra/aci.bicep"
+Assert ($aci.parameters.demoConfigJson.type -eq "securestring") "User/channel mappings must use a secure ARM parameter"
+Assert ($aci.parameters.acmeEmail.type -eq "securestring") "Certificate email must use a secure ARM parameter"
 $group = @($aci.resources | Where-Object type -eq "Microsoft.ContainerInstance/containerGroups")[0]
 Assert ($aci.parameters.useManagedIdentityForImagePull.defaultValue -eq $false) "Image pulls must be anonymous by default"
 Assert ($group.properties.imageRegistryCredentials -eq "[if(parameters('useManagedIdentityForImagePull'), variables('registryCredentials'), createArray())]") "Use registry credentials only with explicit managed-identity opt-in"
@@ -38,7 +40,12 @@ foreach ($name in @("journalBlobUrl", "certificateStorageName", "logWorkspaceNam
 $app = @($group.properties.containers | Where-Object name -eq "app")[0]
 Assert ($app.properties -match "'JOURNAL_BLOB_URL', 'value', ''") "The app must explicitly disable the Blob backend"
 Assert ($app.properties -match "'mountPath', '/app/data'") "Mount the local journal for the app"
+Assert ($app.properties -match "'DEMO_CONFIG_JSON', 'secureValue', parameters\('demoConfigJson'\)") "Pass mappings through secureValue, never plain environment values"
 $caddy = @($group.properties.containers | Where-Object name -eq "https")[0]
+Assert (@($caddy.properties.environmentVariables | Where-Object {
+    $_.name -eq "ACME_EMAIL" -and $_.secureValue -eq "[parameters('acmeEmail')]" -and
+    -not $_.PSObject.Properties["value"]
+}).Count -eq 1) "Certificate email must be a secure environment value"
 Assert (@($caddy.properties.volumeMounts | Where-Object name -eq "journal-data").Count -eq 0) "Caddy must not mount the journal"
 $initializer = @($group.properties.initContainers)[0].properties
 Assert ($initializer.image -eq $caddy.properties.image) "The initializer must reuse the configured Caddy image"

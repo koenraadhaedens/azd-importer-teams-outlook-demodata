@@ -79,6 +79,9 @@ function Get-ManagedIdentityImagePull {
 
 function Invoke-AciDeployment {
     param([switch]$Bootstrap)
+    . (Join-Path $PSScriptRoot "deployment-config.ps1")
+    $configuration = Read-DeploymentConfiguration
+    $env:ACME_EMAIL = $configuration.'x-setup'.acmeEmail
     foreach ($name in @("AZURE_RESOURCE_GROUP", "AZURE_IDENTITY_RESOURCE_ID", "AZURE_IDENTITY_CLIENT_ID",
         "ACI_NAME", "ACI_DNS_LABEL",
         "ACME_EMAIL", "OPERATOR_IDS", "AZURE_TENANT_ID")) {
@@ -98,6 +101,9 @@ function Invoke-AciDeployment {
         }
     }
     $parameters = @{
+        image = @{ value = $configuration.services.app.image }
+        caddyImage = @{ value = $configuration.services.caddy.image }
+        demoConfigJson = @{ value = ($configuration.'x-demo' | ConvertTo-Json -Depth 10 -Compress) }
         containerGroupName = @{ value = $env:ACI_NAME }
         dnsLabel = @{ value = $env:ACI_DNS_LABEL }
         publicHostname = @{ value = $(if ($Bootstrap) { "" } else { $env:PUBLIC_HOSTNAME }) }
@@ -117,16 +123,16 @@ function Invoke-AciDeployment {
     $file = Join-Path ([IO.Path]::GetTempPath()) ("aci-" + [guid]::NewGuid() + ".json")
     try {
         Write-Warning "Demo-only temporary storage: ACI stop/restart/update/recreation can discard certificates and execution history. Review prior sends before running scenarios after storage loss."
-        @{
+        Write-PrivateJsonFile -Path $file -Value @{
             '$schema' = "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"
             contentVersion = "1.0.0.0"
             parameters = $parameters
-        } | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 $file
+        }
         $template = Join-Path (Join-Path $PSScriptRoot "..") "infra/aci.bicep"
         Invoke-Azure @("deployment", "group", "create", "--resource-group", $env:AZURE_RESOURCE_GROUP,
             "--name", "aci-app", "--template-file", $template, "--parameters", "@$file",
             "--output", "none", "--only-show-errors") | Out-Null
     } finally {
-        Remove-Item -LiteralPath $file -Force
+        if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force }
     }
 }

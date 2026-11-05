@@ -3,7 +3,7 @@ $scriptPath = Join-Path (Join-Path $PSScriptRoot "..") "scripts/setup.ps1"
 $configPath = Join-Path ([IO.Path]::GetTempPath()) ("setup-test-" + [guid]::NewGuid() + ".json")
 $savedEnvironment = @{}
 foreach ($name in @("OPERATOR_IDS", "ACME_EMAIL", "DEMO_TENANT_CONFIRMED",
-    "DELIVERY_ENABLED", "MAILBOX_SCOPE_CONFIRMED")) {
+    "DELIVERY_ENABLED", "MAILBOX_SCOPE_CONFIRMED", "DEMO_CONFIG_FILE")) {
     $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
 function Assert {
@@ -13,10 +13,17 @@ function Assert {
 function Write-TestConfig {
     param([string]$Email = "notices@example.org", [string]$Excluded = "excluded@example.org")
     @{
+        services = @{
+            app = @{ image = "example.azurecr.io/app:latest" }
+            caddy = @{ image = "example.azurecr.io/caddy:latest" }
+        }
         "x-setup" = @{ acmeEmail = $Email; outOfScopeTestUpn = $Excluded }
-        "x-demo" = @{ users = @((1..5) | ForEach-Object {
-            @{ userPrincipalName = "user$_@example.org" }
-        }) }
+        "x-demo" = @{
+            channels = @{}
+            users = @((1..5) | ForEach-Object {
+                @{ key = "user$_"; displayName = "User $_"; userPrincipalName = "user$_@example.org" }
+            })
+        }
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configPath
 }
 function Reset-State {
@@ -38,6 +45,7 @@ function Reset-State {
         assigned = [System.Collections.Generic.List[string]]::new()
         tested = [System.Collections.Generic.List[string]]::new()
         exchangePrincipal = $null
+        prompts = [System.Collections.Generic.Queue[string]]::new()
     }
     Write-TestConfig
 }
@@ -74,11 +82,18 @@ function global:azd {
         if (-not $state.values.ContainsKey([string]$args[2])) { throw "Unexpected azd value: $($args[2])" }
         return $state.values[[string]$args[2]]
     } elseif ($args[0] -eq "env" -and $args[1] -eq "set") {
+        Assert ($args[2] -ne "ACME_EMAIL") "Keep certificate email out of azd command arguments and saved environment values"
         $state.values[[string]$args[2]] = [string]$args[3]
     } elseif ($args[0] -eq "deploy") {
-        Assert ($state.values.ACME_EMAIL -eq "notices@example.org") "Deploy must use the configured certificate email"
+        $configuration = Get-Content -LiteralPath $env:DEMO_CONFIG_FILE -Raw | ConvertFrom-Json
+        Assert ($configuration.'x-setup'.acmeEmail -eq "notices@example.org") "Deploy must read private settings via the saved file path"
         Assert ($state.values.MAILBOX_SCOPE_CONFIRMED -eq "true" -and $state.values.DELIVERY_ENABLED -eq "true") "Delivery requires explicit confirmation"
     } else { throw "Unexpected azd call: $args" }
+}
+function global:Read-Host {
+    param([string]$Prompt)
+    if ($global:setupMock.prompts.Count -eq 0) { throw "Unexpected interactive prompt: $Prompt" }
+    return $global:setupMock.prompts.Dequeue()
 }
 function global:Get-Module {
     param($Name, [switch]$ListAvailable)
@@ -170,13 +185,41 @@ try {
         $global:setupMock.tested[-1] -eq "excluded@example.org") "Read and test the excluded mailbox from configuration"
     Assert ($global:setupMock.exchangePrincipal.AppId -eq $global:setupMock.values.AZURE_IDENTITY_CLIENT_ID -and
         $global:setupMock.exchangePrincipal.ObjectId -eq $global:setupMock.values.AZURE_IDENTITY_PRINCIPAL_ID) "Use runtime identity IDs, not the web app ID"
+
+    Reset-State
+    Remove-Item -LiteralPath $configPath
+    foreach ($answer in @("notices@example.org", "excluded@example.org")) {
+        $global:setupMock.prompts.Enqueue($answer)
+    }
+    foreach ($index in 1..5) {
+        $global:setupMock.prompts.Enqueue("Demo user $index")
+        $global:setupMock.prompts.Enqueue("user$index@example.org")
+    }
+    $global:setupMock.prompts.Enqueue("")
+    & $scriptPath -Stage Configure -Config $configPath
+    Assert ($global:setupMock.prompts.Count -eq 0 -and $global:setupMock.calls.Count -eq 0) "Collect configuration without Azure operations"
+    $private = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+    Assert ($private.'x-demo'.users[0].userPrincipalName -eq "user1@example.org") "Persist entered demo users"
+    & $scriptPath -Stage Configure -Config $configPath
+    Assert ($global:setupMock.prompts.Count -eq 0) "Reuse settings without asking again"
+    if (-not $IsWindows) {
+        Assert ([IO.File]::GetUnixFileMode($configPath) -eq
+            ([IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite)) "Private file must be owner-only"
+    } else {
+        $permissions = Get-Acl -LiteralPath $configPath
+        $user = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+        Assert $permissions.AreAccessRulesProtected "Private file must not inherit broad Windows permissions"
+        Assert (@($permissions.Access | Where-Object {
+            $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -ne $user
+        }).Count -eq 0) "Private file must grant access only to the current Windows user"
+    }
     Write-Host "PASS: configuration validation, operator resolution, saved settings, confirmation gates and native failure handling."
 } finally {
     foreach ($name in $savedEnvironment.Keys) {
         [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
     }
     if (Test-Path -LiteralPath $configPath) { Remove-Item -LiteralPath $configPath }
-    Remove-Item Function:\az, Function:\azd
+    Remove-Item Function:\az, Function:\azd, Function:\Read-Host
     foreach ($name in @("Get-Module", "Connect-MgGraph", "Get-MgServicePrincipal",
         "Get-MgServicePrincipalAppRoleAssignedTo", "New-MgServicePrincipalAppRoleAssignedTo",
         "Get-MgOauth2PermissionGrant", "New-MgOauth2PermissionGrant", "Connect-ExchangeOnline",

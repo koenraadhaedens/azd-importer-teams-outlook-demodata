@@ -4,7 +4,10 @@ param location string = resourceGroup().location
 param containerGroupName string
 param dnsLabel string
 param publicHostname string = ''
+@secure()
 param acmeEmail string
+@secure()
+param demoConfigJson string
 param image string = loadJsonContent('../config/config.json', '$.services.app.image')
 param caddyImage string = loadJsonContent('../config/config.json', '$.services.caddy.image')
 param useManagedIdentityForImagePull bool = false
@@ -114,6 +117,7 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
               { name: 'MAILBOX_SCOPE_CONFIRMED', value: string(mailboxScopeConfirmed) }
               { name: 'ALLOW_EXTERNAL_RECIPIENTS', value: string(allowExternalRecipients) }
               { name: 'MANAGED_IDENTITY_CLIENT_ID', value: identityClientId }
+              { name: 'DEMO_CONFIG_JSON', secureValue: demoConfigJson }
               { name: 'JOURNAL_BLOB_URL', value: '' }
               { name: 'DATA_DIR', value: '/app/data' }
             ]
@@ -131,7 +135,7 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
           command: ['caddy', 'run', '--config', '/etc/demo/Caddyfile', '--adapter', 'caddyfile']
           environmentVariables: [
             { name: 'PUBLIC_HOSTNAME', value: publicHostname }
-            { name: 'ACME_EMAIL', value: acmeEmail }
+            { name: 'ACME_EMAIL', secureValue: acmeEmail }
             { name: 'UPSTREAM', value: '127.0.0.1:8000' }
           ]
           resources: { requests: { cpu: json('0.5'), memoryInGB: json('0.5') } }

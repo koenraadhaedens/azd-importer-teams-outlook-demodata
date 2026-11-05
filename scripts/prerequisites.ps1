@@ -11,6 +11,11 @@ if ($LASTEXITCODE -ne 0) { throw "Run az login in the target tenant/subscription
 if ($env:DEMO_TENANT_CONFIRMED -ne "true") {
     throw "Set azd env set DEMO_TENANT_CONFIRMED true only after confirming the isolated CDX tenant."
 }
+if ($env:DEMO_CONFIG_FILE) {
+    . (Join-Path $PSScriptRoot "deployment-config.ps1")
+    $configuration = Read-DeploymentConfiguration
+    $env:ACME_EMAIL = $configuration.'x-setup'.acmeEmail
+}
 $missing = @("OPERATOR_IDS", "ACME_EMAIL") | Where-Object {
     [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))
 }

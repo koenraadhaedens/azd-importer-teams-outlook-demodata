@@ -42,11 +42,26 @@ remote outcomes before running scenarios after storage loss.
 
 ## Container image configuration
 
-[config/config.json](../config/config.json) is the shared source for demo users,
-channel aliases, and application and Caddy image references. Compose extends its service
-entries; Bicep loads their image values as defaults; the smoke script reads them
-unless explicit test overrides are supplied. The deploy hook does not build or
-publish images, and infrastructure no longer creates an unused ACR.
+[config/config.json](../config/config.json) is a fictional template and shared
+default source for image references. Compose extends its service entries; Bicep
+loads only their image values, never tenant mappings. Each trainer's ignored
+`config/config.local.json` supplies deployed image references and private settings.
+The deployment hook explicitly passes these values using a restricted temporary
+parameter file, removed in `finally`. It does not build or publish images.
+
+The Docker context excludes the entire configuration directory; the runtime image
+copies no configuration files. A secure ARM parameter supplies user/channel JSON
+to ACI as `DEMO_CONFIG_JSON` with `secureValue`. The certificate email is another
+secure parameter/environment value. The sixth test mailbox remains local to the
+administrator. Runtime JSON is bounded and strictly validated; malformed injected
+data never falls back to local configuration. Local development/offline validation
+can explicitly read a private file instead.
+
+Only the local file path and operational flags are saved in azd by staged setup.
+No trainer email is sent in an azd setting command. Local settings are private
+files, not encrypted secrets; administrators and container processes remain
+trusted. Secure environment values prevent ordinary control-plane responses from
+displaying their contents, not access by a compromised container.
 
 Both defaults use the existing `acrdefcontainer.azurecr.io` registry and are
 pulled anonymously. The default ACI configuration supplies an empty registry

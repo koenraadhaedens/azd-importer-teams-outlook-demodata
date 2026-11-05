@@ -13,9 +13,9 @@ Before starting:
 - Use an isolated CDX tenant and a subscription in that tenant.
 - Your account needs Azure deployment rights and the Entra administrator rights
   described in [Entra setup](docs/entra-setup.md#deployment-identity-prerequisites).
-- The published app must contain your correct five users and Teams mappings.
-  The checkout must contain the same configuration.
-- Both images in [config.json](config/config.json) must be published and
+- Use the new configuration-free application image. The same image works for
+  every trainer; user/channel settings are supplied privately at deployment.
+- Both image references in your private configuration must be published and
   anonymously pullable, including their exact tags. Building locally or pushing
   only `:latest` does not publish another tag.
 
@@ -47,35 +47,55 @@ az account show --query "{subscription:name,tenantId:tenantId}" --output table
 Use `az account set --subscription "<subscription-id>"` if needed. Complete azd
 sign-in with your CDX deployment account.
 
-## 2. Edit the configuration once
+## 2. Answer the setup questions once
 
-Set these two fields in [config.json](config/config.json):
-
-```json
-"x-setup": {
-  "acmeEmail": "certificate-notices@example.org",
-  "outOfScopeTestUpn": "existing-sixth-mailbox@your-demo-tenant.example"
-}
+```powershell
+pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Configure
 ```
 
-Replace both examples with real addresses:
+The script asks for certificate-notice email, an excluded test mailbox, the five
+demo users' display names/UPNs, and optional Teams channel aliases/IDs. The stable
+user keys come from the template so the sample scenarios continue to work.
+Leave the channel-alias answer blank for email-only scenarios.
+
+Your answers are saved in **ignored `config/config.local.json`**, with access
+restricted to your user. The tracked [config.json](config/config.json) contains
+fictional examples only; do not put real trainer details there.
+Rerunning Configure reuses the saved file without asking again or overwriting it.
+Edit the local file to change settings or published `services` image references.
 
 - `acmeEmail`: administrative email for HTTPS certificate notices.
 - `outOfScopeTestUpn`: an **existing sixth mailbox**, not one of `x-demo.users`.
   It is only used to test that the runtime identity cannot access it. Setup does
   not assign this user to the app or send mail to it.
 
-Retain `services`, the five `x-demo.users`, and `x-demo.channels`.
-Blank or invalid emails and a sixth UPN matching a demo user are rejected before
-setup contacts Azure. The Exchange helper additionally resolves primary SMTP
-addresses and rejects aliases that resolve to one of the five demo mailboxes.
-Never put credentials in this file or publish tenant configuration accidentally.
+Configuration is validated before deployment. The Exchange helper additionally
+rejects aliases that resolve to one of the five allowed mailboxes.
+Treat this file and Cloud Shell storage as private administrator data; it is not
+encrypted at rest by the script. Do not share it or include it in support logs.
+Custom files can be supplied with `-Config <path>` on every stage; keep them
+outside version control. The selected file path, not its contents, is saved to azd.
 
-Changing only `x-setup` requires no image rebuild; these are setup-tool settings,
-not runtime user/channel mappings. Changing packaged mappings still requires a
-newly built and published app image. The certificate email is saved into the azd
-environment by setup. A custom file can be supplied with `-Config <path>` on
-each stage; its mappings must match the published image.
+User/channel mappings are passed through ACI **secure environment values**;
+certificate email uses a separate secure value. The excluded mailbox is not sent
+to the runtime. Neither Git nor the image contains your answers. Changing these
+settings requires redeployment and permission review, **not an image rebuild**.
+Azure administrators and processes inside the relevant containers can still
+access runtime values. Avoid debug/verbose deployment output or shell transcripts
+when handling private configuration.
+
+### Migrating an older installation
+
+Publish a new application image once to adopt this configuration-free runtime.
+Existing local configuration can be reused by placing it in
+`config/config.local.json`. Preserve its logical user keys for existing scenarios.
+Update its image reference to the newly published unique tag/digest.
+
+Removing data from the current checkout does not erase Git history, previously
+published images, deployment records, or old azd values. Review and retire old
+images/tags and remove previously saved ACME_EMAIL values as appropriate.
+Coordinate any Git-history cleanup separately; do not rewrite shared history
+automatically. Rebuilds are unnecessary for subsequent trainer-setting changes.
 
 ## 3. Provision with delivery disabled
 
@@ -87,12 +107,14 @@ pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Provision -ConfirmDemoTenant
 
 On a fresh checkout, `azd provision` asks for the new **environment name**,
 **subscription**, and **location**. Select the same tenant/subscription as Azure
-CLI. These choices and authentication remain interactive; the email questions
-and copying of IDs/settings are removed.
+CLI. These choices and authentication remain interactive; trainer questions are
+only asked if the private file does not exist. No copying of IDs/settings is needed.
 
 [setup.ps1](scripts/setup.ps1) reads the certificate email, resolves your
-signed-in operator object ID, provisions, and saves all prepared values into the
-selected environment. Delivery and mailbox-scope confirmation remain **false**.
+signed-in operator object ID, provisions, and saves operational flags and the
+private configuration path into the selected environment. Emails and mappings
+are not passed as `azd env set` arguments. Delivery and mailbox-scope confirmation
+remain **false**.
 Wait for success and resolve errors before proceeding.
 
 ## 4. Assign users and grant Teams consent
@@ -136,7 +158,7 @@ do not grant unscoped Graph application `Mail.Send` or leave other Exchange
 assignments that broaden access. This review is not automatically confirmed.
 
 If Exchange sign-in is unavailable in Cloud Shell, run this stage from a
-PowerShell 7 administrator workstation with the same checkout/configuration,
+PowerShell 7 administrator workstation with a private copy of the configuration,
 selected azd environment, and Azure CLI authentication. Return here only after
 verification succeeds.
 
@@ -234,7 +256,7 @@ azd env list
 azd env select (Read-Host "Existing environment name")
 ```
 
-Before redeploying, change the app image in [config.json](config/config.json)
+Before upgrading application code, change the app image in the private configuration
 to a newly published unique tag or digest. Reusing unchanged `:latest` does not
 reliably refresh ACI. See [update instructions](README.md#updating-an-installed-environment).
 
@@ -250,7 +272,7 @@ if ($LASTEXITCODE -ne 0) { throw "App image push failed; do not deploy." }
 ```
 
 Publisher authentication is separate from ACI's anonymous pull. Return to Cloud
-Shell and ensure its configuration contains the same pushed reference.
+Shell and ensure its private configuration contains the same pushed reference.
 Deployment does not build, push, or create missing tags.
 
 Export reports first: ACI updates can erase the temporary journal and
@@ -265,5 +287,5 @@ For an existing installation with already-reviewed permissions:
 azd deploy
 ```
 
-If changing the certificate-notice email, rerun the Deploy stage with explicit
-scope confirmation to save the updated email before deploying.
+If using a custom private file path, supply `-Config <path>` to the Deploy stage
+with explicit scope confirmation to save that path for future hooks.

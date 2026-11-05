@@ -66,7 +66,10 @@ def create_app(
                 "Application token acquisition failed; inspect identity configuration"
             )
 
-        users, resources = load_config(cfg.config_file)
+        users, resources = load_config(
+            cfg.config_file,
+            cfg.demo_config_json.get_secret_value() if cfg.demo_config_json is not None else None,
+        )
         client = httpx.AsyncClient(follow_redirects=False)
         adapter = gateway or GraphGateway(client, app_token, users, resources)
         blob = None

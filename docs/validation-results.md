@@ -57,9 +57,9 @@ release security tooling. Static success is not a claim of successful deployment
 
 - `.env.example`: blank tenant/application/operator/credential settings, example
   local ACME email; copy to ignored `.env` and fill securely.
-- `config/config.json`: five configured user mappings, channel aliases, and
-  container image references; verify them for the target tenant before publishing
-  the app image.
+- `config/config.json`: fictional template users, empty channels/setup emails,
+  and default container image references. Real trainer settings belong only in
+  ignored `config/config.local.json`, never in the published image.
 - `README.md` / `docs/*.md`: angle-bracket IDs, example custom domains and
   administrator commands are documentation, not deployed values.
 - `.github/workflows/azure-dev.yml`: GitHub environment variable references,
@@ -69,6 +69,25 @@ Infrastructure templates use parameter/environment references, not real tenant
 IDs or credentials. Valid scenario examples are deliberately dry-run-only.
 
 ## JSON configuration follow-up
+
+The results below describe earlier migrations. The current privacy migration
+uses a fictional tracked template and an ignored per-trainer file. The runtime
+image contains no configuration files; mappings and certificate email are
+supplied through secure ARM parameters / ACI environment values.
+
+- Current Python regression run: **110 passed, 1 failed**. The remaining failure
+  is the pre-existing expectation of a tagless application reference instead of
+  the configured explicit `:latest`; the image reference was not changed.
+- Trainer Configure/Provision/Entra/Exchange/Deploy stages passed mocked checks,
+  including prompt reuse, no email in azd setting arguments, confirmation gates,
+  runtime identity selection, and user-only Windows file ACLs.
+- Mocked ACI initialization/deployment and PowerShell parsing passed.
+- Both Bicep entrypoints compiled; secure-string parameters and ACI `secureValue`
+  wiring were verified.
+- Ruff lint/format and mypy passed. Repository privacy contracts verified
+  fictional template data and Docker context/configuration exclusion.
+- Docker is unavailable on the current machine, so no image build/container
+  smoke test or live Azure deployment was performed for this migration.
 
 - User/resource configuration originally moved to separate JSON files, now
   consolidated with image references in `config/config.json`. Existing mappings

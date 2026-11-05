@@ -8,46 +8,37 @@
     }
   },
   "x-setup": {
-    "acmeEmail": "koenraad@khd.be",
-    "outOfScopeTestUpn": "SoniaR@M365CPI55452589.OnMicrosoft.com"
+    "acmeEmail": "",
+    "outOfScopeTestUpn": ""
   },
   "x-demo": {
     "users": [
       {
-        "key": "koenraad",
-        "displayName": "Koenraad Haedens (mtttraining)",
-        "userPrincipalName": "koenraad@mtttraining.be"
+        "key": "adele",
+        "displayName": "Adele Vance",
+        "userPrincipalName": "adelev@contoso.onmicrosoft.com"
       },
       {
-        "key": "billie",
-        "displayName": "Billie Vester",
-        "userPrincipalName": "BillieV@M365CPI55452589.OnMicrosoft.com"
+        "key": "alex",
+        "displayName": "Alex Wilber",
+        "userPrincipalName": "alexw@contoso.onmicrosoft.com"
       },
       {
-        "key": "hadar",
-        "displayName": "Hadar Caspit",
-        "userPrincipalName": "HadarC@M365CPI55452589.OnMicrosoft.com"
+        "key": "christie",
+        "displayName": "Christie Cline",
+        "userPrincipalName": "christiec@contoso.onmicrosoft.com"
       },
       {
-        "key": "kai",
-        "displayName": "Kai Carter",
-        "userPrincipalName": "KaiC@M365CPI55452589.OnMicrosoft.com"
+        "key": "diego",
+        "displayName": "Diego Siciliani",
+        "userPrincipalName": "diegos@contoso.onmicrosoft.com"
       },
       {
-        "key": "ronak",
-        "displayName": "Ronak Gupta",
-        "userPrincipalName": "RonakG@M365CPI55452589.OnMicrosoft.com"
+        "key": "megan",
+        "displayName": "Megan Bowen",
+        "userPrincipalName": "meganb@contoso.onmicrosoft.com"
       }
     ],
-    "channels": {
-      "project-harvest": {
-        "teamId": "19118a6c-c28b-491c-975b-a1e65b78c140",
-        "channelId": "19:LNeZ_xbbrsY2ys63tfCR_v0n4PI5Dc5mM2skko95K-01@thread.tacv2"
-      },
-      "project-skyhopper": {
-        "teamId": "ecdaeb3c-9c27-4c5b-b315-667bf3bdfe01",
-        "channelId": "19:FfA5kX7QtwThBWj9zyUh4NWG_1Za4M3vLM5JH3-AQKE1@thread.tacv2"
-      }
-    }
+    "channels": {}
   }
 }

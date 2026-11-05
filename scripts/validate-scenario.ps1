@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)][string]$Scenario,
-    [string]$Config = "config\config.json"
+    [string]$Config = "config\config.local.json"
 )
 $ErrorActionPreference = "Stop"
 python -m demo_loader.cli $Scenario --config $Config

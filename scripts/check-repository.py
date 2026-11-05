@@ -50,6 +50,16 @@ def main() -> None:
     load_config(config_path)
     images = json.loads(config_path.read_text("utf-8"))
     assert set(images) == {"services", "x-demo", "x-setup"}
+    assert all(
+        user["userPrincipalName"].endswith("@contoso.onmicrosoft.com")
+        for user in images["x-demo"]["users"]
+    ), "Tracked configuration must contain only fictional template users"
+    assert images["x-demo"]["channels"] == {}, "Keep tenant channel mappings out of the template"
+    assert not any(images["x-setup"].values()), "Keep setup email addresses out of the template"
+    assert "config" in Path(".dockerignore").read_text("utf-8").splitlines()
+    assert not re.search(r"(?im)^COPY\b[^\n]*\bconfig\b", Path("Dockerfile").read_text("utf-8")), (
+        "Runtime images must not copy trainer configuration"
+    )
     assert set(images["services"]) == {"app", "caddy"}
     for name, service in images["services"].items():
         assert set(service) == {"image"}, f"Only an image reference is allowed for {name}"
@@ -76,6 +86,7 @@ def main() -> None:
         if not path.is_file():
             continue
         assert path.name != ".env", "Environment secrets must not be tracked"
+        assert not path.name.endswith(".local.json"), "Private configuration must not be tracked"
         assert path.suffix not in {".pfx", ".pem", ".key"}, f"Credential file: {path}"
         text = path.read_text(encoding="utf-8")
         assert not any(pattern.search(text) for pattern in patterns), f"Credential pattern: {path}"

@@ -1,12 +1,12 @@
 from pathlib import Path
 from uuid import UUID
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
     tenant_id: UUID
     web_client_id: UUID
     public_url: str = "http://localhost:8000"
@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     delivery_enabled: bool = False
     mailbox_scope_confirmed: bool = False
     allow_external_recipients: bool = False
-    config_file: Path = Path("config/config.json")
+    config_file: Path = Path("config/config.local.json")
+    demo_config_json: SecretStr | None = None
     schema_file: Path = Path("schemas/demo-scenario.schema.json")
     data_dir: Path = Path("data")
     max_upload_bytes: int = Field(default=65536, ge=1024, le=1048576)

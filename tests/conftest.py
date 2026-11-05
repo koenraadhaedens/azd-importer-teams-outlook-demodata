@@ -55,6 +55,7 @@ def settings(tmp_path: Path) -> Settings:
         demo_tenant_confirmed=True,
         delivery_enabled=True,
         mailbox_scope_confirmed=True,
+        config_file=Path("config/config.json"),
         data_dir=tmp_path,
     )
 

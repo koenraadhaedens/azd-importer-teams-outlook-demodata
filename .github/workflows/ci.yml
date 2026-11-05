@@ -24,8 +24,8 @@ jobs:
       - run: pytest -q
       - run: python -m demo_loader.cli --write-schema
       - run: git diff --exit-code -- schemas skills/demo-scenario-creator/schema
-      - run: python -m demo_loader.cli examples/demo-scenario.yaml
-      - run: python -m demo_loader.cli skills/demo-scenario-creator/examples/scenario.yaml
+      - run: python -m demo_loader.cli examples/demo-scenario.yaml --config config/config.json
+      - run: python -m demo_loader.cli skills/demo-scenario-creator/examples/scenario.yaml --config config/config.json
       - run: bandit -q -r src -c pyproject.toml
       - run: pip-audit -r requirements.lock
       - run: python scripts/check-repository.py

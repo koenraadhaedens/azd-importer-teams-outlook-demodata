@@ -10,7 +10,15 @@ import yaml
 from pydantic import EmailStr, TypeAdapter
 from yaml.tokens import AliasToken, AnchorToken, TagToken
 
-from demo_loader.models import PLACEHOLDER, Configuration, Email, Resources, Scenario, Users
+from demo_loader.models import (
+    PLACEHOLDER,
+    Configuration,
+    DemoConfiguration,
+    Email,
+    Resources,
+    Scenario,
+    Users,
+)
 
 
 class InputError(ValueError):
@@ -85,12 +93,18 @@ def load_json(data: bytes, maximum: int = 65536) -> dict[str, Any]:
     return value
 
 
-def load_config(config_path: Path) -> tuple[Users, Resources]:
-    try:
-        configuration = Configuration.model_validate(load_json(config_path.read_bytes()))
-    except OSError as exc:
-        raise InputError("Required configuration is missing or unreadable") from exc
-    return Users(users=configuration.demo.users), Resources(channels=configuration.demo.channels)
+def load_config(config_path: Path, demo_json: str | None = None) -> tuple[Users, Resources]:
+    if demo_json is not None:
+        demo = DemoConfiguration.model_validate(load_json(demo_json.encode("utf-8")))
+    else:
+        try:
+            demo = Configuration.model_validate(load_json(config_path.read_bytes())).demo
+        except OSError as exc:
+            raise InputError(
+                "Private configuration is missing or unreadable; provide DEMO_CONFIG_JSON "
+                "or CONFIG_FILE, or run the setup script"
+            ) from exc
+    return Users(users=demo.users), Resources(channels=demo.channels)
 
 
 def parse_scenario(data: bytes, schema_path: Path, maximum: int = 65536) -> Scenario:

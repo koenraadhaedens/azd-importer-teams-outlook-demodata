@@ -7,7 +7,9 @@ services:
     env_file: .env
     environment:
       DATA_DIR: /app/data
+      CONFIG_FILE: /app/config/config.local.json
     volumes:
+      - ./config/config.local.json:/app/config/config.local.json:ro
       - journal:/app/data
     read_only: true
     tmpfs:

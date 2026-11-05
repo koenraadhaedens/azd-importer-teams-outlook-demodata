@@ -17,7 +17,7 @@ from demo_loader.validation import InputError, load_config, load_json
 def configuration_path(tmp_path: Path) -> Path:
     directory = tmp_path / "config"
     directory.mkdir()
-    config_path = directory / "config.json"
+    config_path = directory / "config.local.json"
     config_path.write_text(
         json.dumps(
             {
@@ -47,7 +47,7 @@ def test_default_configuration_is_json(settings: Settings) -> None:
     assert settings.config_file == Path("config/config.json")
     users, resources = load_config(settings.config_file)
     assert len(users.users) == 5
-    assert "project-harvest" in resources.channels
+    assert not resources.channels
 
 
 @pytest.mark.parametrize(
@@ -173,6 +173,41 @@ def test_setup_configuration(configuration_path: Path, mutation: str) -> None:
     else:
         users, _ = load_config(configuration_path)
         assert len(users.users) == 5
+
+
+def test_app_uses_secure_environment_without_a_packaged_file(
+    settings: Settings,
+    fake: FakeGateway,
+    configuration_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    demo = load_json(configuration_path.read_bytes())["x-demo"]
+    monkeypatch.setenv("DEMO_CONFIG_JSON", json.dumps(demo))
+    secure_settings = Settings(
+        _env_file=None,
+        **settings.model_dump(exclude={"demo_config_json"}),
+    )
+    secure_settings.config_file = configuration_path.parent / "missing.json"
+    assert "adele@example.org" not in repr(secure_settings)
+    with TestClient(create_app(secure_settings, fake), base_url="http://localhost:8000") as client:
+        assert client.get("/healthz").json() == {"status": "ready"}
+        assert client.app.state.users.users[0].userPrincipalName == "adele@example.org"
+
+
+@pytest.mark.parametrize("value", ["", "{}", '{"users":[],"users":[]}', "x" * 65537])
+def test_invalid_secure_configuration_never_falls_back_to_file(
+    configuration_path: Path, value: str
+) -> None:
+    with pytest.raises((InputError, ValidationError)):
+        load_config(configuration_path, value)
+
+
+def test_configuration_errors_do_not_echo_private_values(configuration_path: Path) -> None:
+    data = load_json(configuration_path.read_bytes())["x-demo"]
+    data["users"][0]["userPrincipalName"] = "private-address@"
+    with pytest.raises(ValidationError) as error:
+        load_config(configuration_path, json.dumps(data))
+    assert "private-address@" not in str(error.value)
 
 
 @pytest.mark.parametrize("custom_paths", [False, True])

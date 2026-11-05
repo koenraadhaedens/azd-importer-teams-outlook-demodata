@@ -9,7 +9,7 @@ from demo_loader.validation import load_config, parse_scenario, prepare
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate untrusted demo scenario YAML offline")
     parser.add_argument("scenario", type=Path, nargs="?")
-    parser.add_argument("--config", type=Path, default=Path("config/config.json"))
+    parser.add_argument("--config", type=Path, default=Path("config/config.local.json"))
     parser.add_argument("--schema", type=Path, default=Path("schemas/demo-scenario.schema.json"))
     parser.add_argument("--write-schema", action="store_true")
     args = parser.parse_args()

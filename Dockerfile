@@ -16,7 +16,6 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=app:app templates ./templates
 COPY --chown=app:app static ./static
-COPY --chown=app:app config ./config
 COPY --chown=app:app schemas ./schemas
 RUN mkdir data && chown app:app data
 USER 10001:10001

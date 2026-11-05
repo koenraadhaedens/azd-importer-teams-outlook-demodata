@@ -8,8 +8,8 @@
     }
   },
   "x-setup": {
-    "acmeEmail": "",
-    "outOfScopeTestUpn": ""
+    "acmeEmail": "koenraad@khd.be",
+    "outOfScopeTestUpn": "SoniaR@M365CPI55452589.OnMicrosoft.com"
   },
   "x-demo": {
     "users": [

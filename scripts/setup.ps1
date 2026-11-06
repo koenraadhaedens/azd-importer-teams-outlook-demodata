@@ -18,6 +18,7 @@ $configPath = [IO.Path]::GetFullPath($Config)
 if ($Stage -eq "Install") {
     function Invoke-SetupStage {
         param([string]$Name, [string[]]$Arguments)
+        Write-Host "Setup: $Name"
         & pwsh -NoProfile -File $PSCommandPath -Stage $Name -Config $configPath @Arguments
         if ($LASTEXITCODE -ne 0) {
             throw "Setup stopped at $Name. Resolve the error, then retry: pwsh -NoProfile -File `"$PSCommandPath`" -Stage $Name -Config `"$configPath`" $($Arguments -join ' ')"
@@ -67,9 +68,8 @@ $excludedUpn = [string]$configuration.'x-setup'.outOfScopeTestUpn
 
 function Invoke-SetupAzd {
     param([string[]]$Arguments)
-    $result = & azd @Arguments
+    & azd @Arguments
     if ($LASTEXITCODE -ne 0) { throw "azd $($Arguments -join ' ') failed; resolve the error before continuing." }
-    return $result
 }
 
 function Get-SetupValue {
@@ -109,7 +109,7 @@ try {
         $env:DEMO_TENANT_CONFIRMED = "true"
         $env:DELIVERY_ENABLED = "false"
         $env:MAILBOX_SCOPE_CONFIRMED = "false"
-        Invoke-SetupAzd @("provision") | Out-Host
+        Invoke-SetupAzd @("provision")
         foreach ($name in @("OPERATOR_IDS", "DEMO_CONFIG_FILE", "DEMO_TENANT_CONFIRMED",
             "DELIVERY_ENABLED", "MAILBOX_SCOPE_CONFIRMED")) {
             Invoke-SetupAzd @("env", "set", $name, [Environment]::GetEnvironmentVariable($name)) | Out-Host
@@ -156,7 +156,7 @@ try {
         Invoke-SetupAzd @("env", "set", "DEMO_CONFIG_FILE", $configPath) | Out-Host
         Invoke-SetupAzd @("env", "set", "MAILBOX_SCOPE_CONFIRMED", "true") | Out-Host
         Invoke-SetupAzd @("env", "set", "DELIVERY_ENABLED", "true") | Out-Host
-        Invoke-SetupAzd @("deploy") | Out-Host
+        Invoke-SetupAzd @("deploy")
         Write-Host "Application URL: $(Get-SetupValue 'PUBLIC_URL')"
     }
 } finally {

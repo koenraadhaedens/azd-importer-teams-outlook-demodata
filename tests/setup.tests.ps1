@@ -49,6 +49,8 @@ function Reset-State {
         onConfirm = $null
         stages = [System.Collections.Generic.List[object]]::new()
         failedStage = ""
+        streamProgress = $false
+        progressReceived = $false
     }
     Write-TestConfig
 }
@@ -76,6 +78,10 @@ function global:azd {
     $state = $global:setupMock
     $state.calls.Add(@($args))
     $global:LASTEXITCODE = 0
+    if ($state.streamProgress -and $args[0] -in @("provision", "deploy")) {
+        Write-Output "setup-progress:$($args[0])"
+        Assert $state.progressReceived "Show azd output before the command finishes, not after it returns"
+    }
     if ($args[0] -eq "provision") {
         Assert ($env:ACME_EMAIL -eq "notices@example.org") "Provision must read the configured certificate email"
         Assert ($env:DELIVERY_ENABLED -eq "false" -and $env:MAILBOX_SCOPE_CONFIRMED -eq "false") "Provision must disable real delivery"
@@ -181,6 +187,18 @@ try {
     & $scriptPath -Stage Provision -Config $configPath -ConfirmDemoTenant
     Assert ($global:setupMock.calls.Count -eq 6) "Provision must save all five settings without copy-pasting"
     Assert ($global:setupMock.values.OPERATOR_IDS -eq "00000000-0000-0000-0000-000000000001") "Resolve the signed-in operator automatically"
+
+    foreach ($stage in @("Provision", "Deploy")) {
+        Reset-State
+        $global:setupMock.streamProgress = $true
+        & $scriptPath -Stage $stage -Config $configPath -ConfirmDemoTenant -ConfirmMailboxScope |
+            ForEach-Object {
+                if ($_ -eq "setup-progress:$($stage.ToLowerInvariant())") {
+                    $global:setupMock.progressReceived = $true
+                }
+            }
+        Assert $global:setupMock.progressReceived "Display live progress for $stage"
+    }
 
     Reset-State
     $global:setupMock.provisionFails = $true

@@ -69,6 +69,7 @@ function global:az {
     }
     if ($args[0] -eq "account") { return $global:setupMock.values.AZURE_TENANT_ID }
     if ($args[0] -eq "ad" -and $args[1] -eq "user") {
+        Assert ("--subscription" -notin $args) "Entra user lookup must not pass the unsupported --subscription argument"
         Assert ($args[4] -match '^user([1-5])@example.org$') "Only the five demo users should be assigned"
         return "00000000-0000-0000-0000-00000000001$($Matches[1])"
     }

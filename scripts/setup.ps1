@@ -82,7 +82,6 @@ function Get-SetupValue {
 function Get-SetupUserId {
     param([string]$Upn)
     $arguments = @("ad", "user", "show", "--id", $Upn, "--query", "id", "--output", "tsv")
-    if ($script:subscriptionId) { $arguments += @("--subscription", $script:subscriptionId) }
     $result = & az @arguments
     if ($LASTEXITCODE -ne 0) { throw "Could not resolve Entra user: $Upn" }
     return ([guid]::Parse(($result -join "").Trim())).ToString()

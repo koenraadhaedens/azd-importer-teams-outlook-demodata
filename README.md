@@ -231,8 +231,10 @@ pwsh -NoProfile -File ./scripts/setup.ps1
 
 First upload or edit the local configuration at the script's pause, then press
 Enter. Setup runs the deployment stages automatically and installs missing
-administrator modules. Follow sign-in prompts and confirm the demo tenant and
-mailbox-access results when asked. Delivery stays disabled until you approve it.
+administrator modules. Follow sign-in prompts and confirm the demo tenant.
+After Exchange succeeds, setup automatically confirms mailbox scope and deploys
+with real delivery enabled; no final YES prompt is required. Review the mailbox
+results before running demos.
 Separate processes isolate Graph and Exchange modules. Only the private file
 path and operational flags are saved to azd.
 Individual `-Stage` commands and the detailed manual commands below remain

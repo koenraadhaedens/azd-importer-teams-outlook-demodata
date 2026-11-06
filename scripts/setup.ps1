@@ -35,11 +35,7 @@ if ($Stage -eq "Install") {
     Invoke-SetupStage "Provision" @("-ConfirmDemoTenant")
     Invoke-SetupStage "Entra" @("-InstallModules")
     Invoke-SetupStage "Exchange" @("-InstallModules")
-    Write-Host "Review the Exchange results: five mailboxes InScope=True, the sixth InScope=False, and no other grants broadening access."
-    if (-not $ConfirmMailboxScope -and
-        (Read-Host "Type YES to confirm mailbox access is correct and enable demo delivery") -ne "YES") {
-        throw "Delivery remains disabled. After reviewing mailbox access, continue with -Stage Deploy -ConfirmMailboxScope."
-    }
+    Write-Host "Exchange setup complete. Continuing to deployment with demo delivery enabled."
     Invoke-SetupStage "Deploy" @("-ConfirmMailboxScope")
     return
 }

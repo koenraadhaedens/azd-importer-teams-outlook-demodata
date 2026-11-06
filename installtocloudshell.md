@@ -46,12 +46,14 @@ Then follow the prompts:
 1. Confirm the displayed demo tenant/subscription.
 2. Choose an environment name, subscription, and location when asked.
 3. Sign in for Entra and Exchange administration. Required modules install automatically.
-4. Review the mailbox results: **five `InScope=True`, sixth `InScope=False`**,
-   with no other grants broadening access. Type **YES** only when correct.
 
 Setup provisions Azure resources, assigns users, configures permissions, and
-deploys the app automatically. Real delivery stays disabled until your final
-confirmation. No scenarios run during setup.
+deploys the app automatically. After Exchange succeeds, setup confirms mailbox
+scope and enables real delivery automatically during deployment. **There is no
+final YES prompt.** No scenarios run during setup.
+
+The expected mailbox results are **five `InScope=True`, sixth `InScope=False`**.
+Review these results and ensure no other grants broaden access before running demos.
 
 ## 3. Open the app
 

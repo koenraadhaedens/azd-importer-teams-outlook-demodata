@@ -104,8 +104,7 @@ function global:Read-Host {
     param([string]$Prompt)
     Assert ($Prompt -in @(
         "Press Enter after uploading or saving the file to continue",
-        "Type YES to confirm this is your isolated demo tenant/subscription",
-        "Type YES to confirm mailbox access is correct and enable demo delivery"
+        "Type YES to confirm this is your isolated demo tenant/subscription"
     )) "Setup must not prompt for individual settings"
     if ($global:setupMock.prompts.Count -eq 0) { throw "Unexpected interactive prompt: $Prompt" }
     if ($global:setupMock.onConfirm) {
@@ -131,8 +130,8 @@ function global:pwsh {
     }
     if ($Stage -eq "Provision") { Assert ("-ConfirmDemoTenant" -in $StageArguments) "Pass tenant confirmation after operator approval" }
     if ($Stage -eq "Deploy") {
-        Assert ("-ConfirmMailboxScope" -in $StageArguments) "Enable delivery only after mailbox-access approval"
-        Assert ($global:setupMock.prompts.Count -eq 0) "Consume both approvals before deployment"
+        Assert ("-ConfirmMailboxScope" -in $StageArguments) "Pass automatic mailbox confirmation to final deployment"
+        Assert ($global:setupMock.prompts.Count -eq 0) "Consume setup prompts before deployment"
     }
 }
 function global:Get-Module {
@@ -299,7 +298,7 @@ try {
     Assert ((Get-Content -LiteralPath $templatePath -Raw) -ceq $templateBefore) "Keep the published demo template unchanged"
 
     Reset-State
-    foreach ($answer in @("", "YES", "YES")) { $global:setupMock.prompts.Enqueue($answer) }
+    foreach ($answer in @("", "YES")) { $global:setupMock.prompts.Enqueue($answer) }
     & $scriptPath -Config $configPath
     Assert (($global:setupMock.stages -join ",") -eq "Configure,Provision,Entra,Exchange,Deploy") "Default setup must run all stages in order"
 
@@ -309,14 +308,14 @@ try {
     Assert (($global:setupMock.stages -join ",") -eq "Configure") "Declining tenant confirmation must stop before provisioning"
 
     Reset-State
-    foreach ($answer in @("", "YES", "")) { $global:setupMock.prompts.Enqueue($answer) }
-    Expect-Failure @{} "Delivery remains disabled"
-    Assert (($global:setupMock.stages -join ",") -eq "Configure,Provision,Entra,Exchange") "Declining mailbox confirmation must not deploy"
+    $global:setupMock.prompts.Enqueue("")
+    & $scriptPath -Config $configPath -ConfirmDemoTenant
+    Assert (($global:setupMock.stages -join ",") -eq "Configure,Provision,Entra,Exchange,Deploy") "Preconfirmed tenant setup must deploy without further confirmations"
 
     foreach ($failedStage in @("Configure", "Provision", "Entra", "Exchange", "Deploy")) {
         Reset-State
         $global:setupMock.failedStage = $failedStage
-        foreach ($answer in @("", "YES", "YES")) { $global:setupMock.prompts.Enqueue($answer) }
+        foreach ($answer in @("", "YES")) { $global:setupMock.prompts.Enqueue($answer) }
         Expect-Failure @{} "Setup stopped at $failedStage"
         Assert ($global:setupMock.stages[-1] -eq $failedStage) "Never run another stage after a failure"
     }

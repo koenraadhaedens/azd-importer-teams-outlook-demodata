@@ -47,6 +47,8 @@ function Reset-State {
         exchangePrincipal = $null
         prompts = [System.Collections.Generic.Queue[string]]::new()
         onConfirm = $null
+        stages = [System.Collections.Generic.List[object]]::new()
+        failedStage = ""
     }
     Write-TestConfig
 }
@@ -93,13 +95,38 @@ function global:azd {
 }
 function global:Read-Host {
     param([string]$Prompt)
-    Assert ($Prompt -eq "Press Enter after uploading or saving the file to continue") "Setup must only prompt to confirm the local file is ready"
+    Assert ($Prompt -in @(
+        "Press Enter after uploading or saving the file to continue",
+        "Type YES to confirm this is your isolated demo tenant/subscription",
+        "Type YES to confirm mailbox access is correct and enable demo delivery"
+    )) "Setup must not prompt for individual settings"
     if ($global:setupMock.prompts.Count -eq 0) { throw "Unexpected interactive prompt: $Prompt" }
     if ($global:setupMock.onConfirm) {
         Assert ($global:setupMock.calls.Count -eq 0) "Setup must pause before Azure operations"
         & $global:setupMock.onConfirm
     }
     return $global:setupMock.prompts.Dequeue()
+}
+function global:pwsh {
+    param([switch]$NoProfile, [string]$File, [string]$Stage, [string]$Config,
+        [Parameter(ValueFromRemainingArguments)][string[]]$StageArguments)
+    Assert ($NoProfile -and [IO.Path]::GetFullPath($File) -eq [IO.Path]::GetFullPath($scriptPath)) "Run setup stages in clean PowerShell processes"
+    Assert ($Config -eq $configPath) "Pass the selected private config path to every stage"
+    $global:setupMock.stages.Add($Stage)
+    $global:LASTEXITCODE = 0
+    if ($global:setupMock.failedStage -eq $Stage) {
+        $global:LASTEXITCODE = 1
+        return
+    }
+    if ($Stage -eq "Configure") { & $File -Stage Configure -Config $Config }
+    if ($Stage -in @("Entra", "Exchange")) {
+        Assert ("-InstallModules" -in $StageArguments) "Install required administrator modules automatically"
+    }
+    if ($Stage -eq "Provision") { Assert ("-ConfirmDemoTenant" -in $StageArguments) "Pass tenant confirmation after operator approval" }
+    if ($Stage -eq "Deploy") {
+        Assert ("-ConfirmMailboxScope" -in $StageArguments) "Enable delivery only after mailbox-access approval"
+        Assert ($global:setupMock.prompts.Count -eq 0) "Consume both approvals before deployment"
+    }
 }
 function global:Get-Module {
     param($Name, [switch]$ListAvailable)
@@ -252,13 +279,36 @@ try {
     Assert ($failure -like "*tracked template*") "Reject the tracked template as the editable private file"
     Assert ((Get-Content -LiteralPath $templatePath -Raw) -ceq $templateBefore) "Keep the published demo template unchanged"
 
-    Write-Host "PASS: local-file confirmation, configuration validation, operator resolution, saved settings, confirmation gates and native failure handling."
+    Reset-State
+    foreach ($answer in @("", "YES", "YES")) { $global:setupMock.prompts.Enqueue($answer) }
+    & $scriptPath -Config $configPath
+    Assert (($global:setupMock.stages -join ",") -eq "Configure,Provision,Entra,Exchange,Deploy") "Default setup must run all stages in order"
+
+    Reset-State
+    foreach ($answer in @("", "no")) { $global:setupMock.prompts.Enqueue($answer) }
+    Expect-Failure @{} "cancelled before provisioning"
+    Assert (($global:setupMock.stages -join ",") -eq "Configure") "Declining tenant confirmation must stop before provisioning"
+
+    Reset-State
+    foreach ($answer in @("", "YES", "")) { $global:setupMock.prompts.Enqueue($answer) }
+    Expect-Failure @{} "Delivery remains disabled"
+    Assert (($global:setupMock.stages -join ",") -eq "Configure,Provision,Entra,Exchange") "Declining mailbox confirmation must not deploy"
+
+    foreach ($failedStage in @("Configure", "Provision", "Entra", "Exchange", "Deploy")) {
+        Reset-State
+        $global:setupMock.failedStage = $failedStage
+        foreach ($answer in @("", "YES", "YES")) { $global:setupMock.prompts.Enqueue($answer) }
+        Expect-Failure @{} "Setup stopped at $failedStage"
+        Assert ($global:setupMock.stages[-1] -eq $failedStage) "Never run another stage after a failure"
+    }
+
+    Write-Host "PASS: single-command setup, local-file confirmation, configuration validation, operator resolution, saved settings, confirmation gates and native failure handling."
 } finally {
     foreach ($name in $savedEnvironment.Keys) {
         [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
     }
     if (Test-Path -LiteralPath $configPath) { Remove-Item -LiteralPath $configPath }
-    Remove-Item Function:\az, Function:\azd, Function:\Read-Host
+    Remove-Item Function:\az, Function:\azd, Function:\Read-Host, Function:\pwsh
     foreach ($name in @("Get-Module", "Connect-MgGraph", "Get-MgServicePrincipal",
         "Get-MgServicePrincipalAppRoleAssignedTo", "New-MgServicePrincipalAppRoleAssignedTo",
         "Get-MgOauth2PermissionGrant", "New-MgOauth2PermissionGrant", "Connect-ExchangeOnline",

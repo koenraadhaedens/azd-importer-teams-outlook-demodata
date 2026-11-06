@@ -1,5 +1,5 @@
 param(
-    [Parameter(Mandatory)][ValidateSet("Configure", "Provision", "Entra", "Exchange", "Deploy")][string]$Stage,
+    [ValidateSet("Install", "Configure", "Provision", "Entra", "Exchange", "Deploy")][string]$Stage = "Install",
     [string]$Config,
     [switch]$ConfirmDemoTenant,
     [switch]$ConfirmMailboxScope,
@@ -15,6 +15,33 @@ if (-not $Config) {
     }
 }
 $configPath = [IO.Path]::GetFullPath($Config)
+if ($Stage -eq "Install") {
+    function Invoke-SetupStage {
+        param([string]$Name, [string[]]$Arguments)
+        & pwsh -NoProfile -File $PSCommandPath -Stage $Name -Config $configPath @Arguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "Setup stopped at $Name. Resolve the error, then retry: pwsh -NoProfile -File `"$PSCommandPath`" -Stage $Name -Config `"$configPath`" $($Arguments -join ' ')"
+        }
+    }
+
+    Invoke-SetupStage "Configure"
+    & az account show --query "{subscription:name,tenantId:tenantId}" --output table
+    if ($LASTEXITCODE -ne 0) { throw "Authenticate Azure CLI in your demo tenant before continuing." }
+    if (-not $ConfirmDemoTenant -and
+        (Read-Host "Type YES to confirm this is your isolated demo tenant/subscription") -ne "YES") {
+        throw "Setup cancelled before provisioning."
+    }
+    Invoke-SetupStage "Provision" @("-ConfirmDemoTenant")
+    Invoke-SetupStage "Entra" @("-InstallModules")
+    Invoke-SetupStage "Exchange" @("-InstallModules")
+    Write-Host "Review the Exchange results: five mailboxes InScope=True, the sixth InScope=False, and no other grants broadening access."
+    if (-not $ConfirmMailboxScope -and
+        (Read-Host "Type YES to confirm mailbox access is correct and enable demo delivery") -ne "YES") {
+        throw "Delivery remains disabled. After reviewing mailbox access, continue with -Stage Deploy -ConfirmMailboxScope."
+    }
+    Invoke-SetupStage "Deploy" @("-ConfirmMailboxScope")
+    return
+}
 if ($Stage -eq "Configure" -or ($Stage -eq "Provision" -and -not (Test-Path -LiteralPath $configPath))) {
     $template = Join-Path (Join-Path $PSScriptRoot "..") "config/config.json"
     if ($configPath -eq [IO.Path]::GetFullPath($template)) { throw "Do not store trainer settings in the tracked template." }
@@ -87,7 +114,7 @@ try {
             "DELIVERY_ENABLED", "MAILBOX_SCOPE_CONFIRMED")) {
             Invoke-SetupAzd @("env", "set", $name, [Environment]::GetEnvironmentVariable($name)) | Out-Host
         }
-        Write-Host "Provisioned with delivery disabled. Next: run the Entra stage in a clean PowerShell process."
+        Write-Host "Provisioning complete; delivery is disabled."
         return
     }
 
@@ -107,7 +134,7 @@ try {
         & (Join-Path $PSScriptRoot "setup-entra.ps1") `
             -WebClientId ([guid](Get-SetupValue "WEB_CLIENT_ID")) `
             -AllowedObjectIds @($allowedIds | Sort-Object -Unique) -GrantConsent
-        Write-Host "Next: run the Exchange stage in a separate clean PowerShell process."
+        Write-Host "Entra user assignments and consent complete."
     } elseif ($Stage -eq "Exchange") {
         if (Get-Module Microsoft.Graph.*) {
             throw "Run Exchange in a clean process: pwsh -NoProfile -File scripts/setup.ps1 -Stage Exchange"

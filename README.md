@@ -221,25 +221,22 @@ and a new azd environment. No settings from another deployment are required.
 
 ### Azure portal Cloud Shell (PowerShell)
 
-For the recommended staged-script setup using already-published images, see
+For the recommended single-command setup using already-published images, see
 [Install from Azure Cloud Shell](installtocloudshell.md).
-After authenticating azd/Azure CLI,
-run each command only after the previous stage succeeds:
+After authenticating azd/Azure CLI, run:
 
 ```powershell
-pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Configure
-pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Provision -ConfirmDemoTenant
-pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Entra -InstallModules
-pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Exchange -InstallModules
-# Run only after reviewing the five allowed and one excluded mailbox results.
-pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Deploy -ConfirmMailboxScope
+pwsh -NoProfile -File ./scripts/setup.ps1
 ```
 
-The script pauses for you to upload or edit the local configuration, resolves operator/user IDs, reads
-generated identity IDs, and saves only the private file path and operational
-flags to azd. Separate processes isolate Graph and Exchange modules.
-Provisioning leaves delivery disabled; the final command explicitly enables it.
-The detailed manual commands below remain available for custom administration.
+First upload or edit the local configuration at the script's pause, then press
+Enter. Setup runs the deployment stages automatically and installs missing
+administrator modules. Follow sign-in prompts and confirm the demo tenant and
+mailbox-access results when asked. Delivery stays disabled until you approve it.
+Separate processes isolate Graph and Exchange modules. Only the private file
+path and operational flags are saved to azd.
+Individual `-Stage` commands and the detailed manual commands below remain
+available for recovery and custom administration.
 
 #### 1. Prepare the tenant and container images
 

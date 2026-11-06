@@ -2,7 +2,7 @@
 
 | Symptom | Investigation / fix |
 |---|---|
-| Missing azd environment value: OPERATOR_IDS or ACME_EMAIL | Run setup.ps1 -Stage Configure to create the ignored private file, then the [Provision setup stage](../installtocloudshell.md#3-provision-with-delivery-disabled). It resolves the operator and saves the file path; hooks read certificate email privately. For manual setup, set DEMO_CONFIG_FILE to the absolute private file path and OPERATOR_IDS to an allowed Entra user object ID (or JSON array). Do not put trainer email in the tracked template or azd command arguments. |
+| Missing azd environment value: OPERATOR_IDS or ACME_EMAIL | Run the [single-command setup](../installtocloudshell.md#2-run-setup), or retry setup.ps1 -Stage Provision -ConfirmDemoTenant after preparing the private file. It resolves the operator and saves the file path; hooks read certificate email privately. For manual setup, set DEMO_CONFIG_FILE to the absolute private file path and OPERATOR_IDS to an allowed Entra user object ID (or JSON array). Do not put trainer email in the tracked template or azd command arguments. |
 | Private configuration missing or invalid at startup/deployment | Run the Configure stage or restore the ignored local file. Deployment injects x-demo using DEMO_CONFIG_JSON; an invalid injected value fails closed without falling back to a file. Older images need a one-time rebuild to support injection. Never paste the private JSON into support logs. |
 | OPERATOR_IDS ConvertFrom-Json / invalid-number error | JSON quotes may have been lost when passed through native commands. For one operator, use azd env set OPERATOR_IDS <your-user-object-id> without JSON brackets. Hooks accept the GUID directly and serialize a JSON array into the ARM parameter file. Invalid JSON, non-array JSON and non-GUID IDs fail validation before provisioning. |
 | Cloud Shell preprovision reports Bicep CLI not found | The current hook installs missing Bicep with az bicep install. On an older checkout, run that command manually and retry azd provision. Installation needs download access and a writable Azure CLI configuration directory. A failed install or verification stops provisioning explicitly; check bicep.use_binary_from_path if an installed binary is not found. |
@@ -10,7 +10,7 @@
 | Startup refuses tenant/operator configuration | Fill tenant/web IDs; confirm isolated CDX explicitly; configure operator IDs or a direct security group. No auth bypass exists. |
 | User resolution 403 | Postprovision assigns Graph application User.Read.All to the verified runtime principal. Confirm the hook reported assigned/already assigned, then allow permission/token-cache propagation. If missing, run azd provision with an identity authorized to grant this role. Managed identity alone is insufficient; do not grant broader directory/mail permissions to bypass the error. |
 | A configured UPN is not found | Replace sample UPNs with real CDX users, verify tenant and license, check exact UPN rather than SMTP alias. |
-| New-ManagementScope says an existing scope has the same filter, or New-ManagementRoleAssignment says the scope was not found | Older helpers can keep using a proposed new name after equivalent scope creation fails. Update setup-exchange.ps1 in the deployment checkout and follow the [recovery commands](../installtocloudshell.md#recovering-from-an-existing-exchange-scope-after-a-fresh-deployment). The current helper reuses an exact five-address scope, uses its actual name and gives each runtime identity its own verified assignment. It never changes an existing scope; ambiguity or a conflicting principal/assignment fails explicitly. Verify five allowed mailboxes and one excluded mailbox before setting MAILBOX_SCOPE_CONFIRMED=true. No container rebuild or redeployment is needed for the Exchange grant. |
+| New-ManagementScope says an existing scope has the same filter, or New-ManagementRoleAssignment says the scope was not found | Older helpers can keep using a proposed new name after equivalent scope creation fails. Update setup-exchange.ps1 in the deployment checkout and follow the [recovery commands](#recovering-from-an-existing-exchange-scope-after-a-fresh-deployment). The current helper reuses an exact five-address scope, uses its actual name and gives each runtime identity its own verified assignment. It never changes an existing scope; ambiguity or a conflicting principal/assignment fails explicitly. Verify five allowed mailboxes and one excluded mailbox before setting MAILBOX_SCOPE_CONFIRMED=true. No container rebuild or redeployment is needed for the Exchange grant. |
 | New environment seems to reuse an old app or mail scope | Azure resource-group deletion does not delete Entra registrations/enterprise applications or Exchange registrations/scopes/assignments. Select the intended azd environment and reload WEB_CLIENT_ID, AZURE_IDENTITY_CLIENT_ID and AZURE_IDENTITY_PRINCIPAL_ID rather than reusing shell variables. The web app ID is separate from the runtime identity used for Exchange; an existing mailbox scope is not proof of web app reuse or a grant to the new identity. |
 | Mail 403 | Verify Exchange service-principal object ID, five-mailbox scope, Application Mail.Send assignment and propagation. Do not "fix" it by granting broad Mail.ReadWrite. |
 | Mail succeeds outside five users | Stop delivery immediately; inspect additive Entra Mail.Send and other Exchange role assignments. Application checks are not a substitute for mailbox scope. |
@@ -41,3 +41,25 @@
 
 Never paste access tokens, authorization callback URLs, passwords, client secrets
 or raw journal content into an issue. Provide a redacted report/correlation ID.
+
+## Recovering from an existing Exchange scope after a fresh deployment
+
+Deleting an Azure resource group or running `azd down` does not delete tenant-level
+Entra apps, Exchange registrations, scopes, or role assignments.
+The helper reuses a scope with exactly the same five primary SMTP predicates,
+regardless of order, case or parentheses. Each runtime identity gets its own
+`DemoMailSend-<principal-object-id>` assignment.
+
+For older-helper errors, update the checkout, select the intended environment
+with `azd env list` / `azd env select <name>`, and retry:
+
+```powershell
+pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Exchange -InstallModules
+```
+
+The helper prints the resolved scope name and tests all six mailboxes.
+Do not retry with a guessed scope name. Multiple equivalent scopes or conflicting
+principals/assignments require manual review. For an explicitly reviewed scope,
+use [setup-exchange.ps1](../scripts/setup-exchange.ps1) with `-ScopeName` and the
+selected environment's runtime identity IDs. `WEB_CLIENT_ID` is the web app,
+not the Exchange runtime identity. Do not remove old grants until confirmed retired.

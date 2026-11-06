@@ -98,9 +98,11 @@ See [Entra setup](docs/entra-setup.md) for bootstrap and migration details.
 
 The tracked [config/config.json](config/config.json) is a fictional template,
 not trainer settings. Run [setup.ps1](scripts/setup.ps1) with `-Stage Configure`
-to answer the certificate email, excluded sixth mailbox, five demo-user and
-optional channel questions once. It creates ignored `config/config.local.json`
-with user-only file permissions. Subsequent stages reuse that file.
+to pause while you upload or edit your private configuration, then press Enter
+to validate and continue. No names or email addresses are prompted individually.
+If needed, it creates a demo-only copy at ignored `config/config.local.json`
+with user-only file permissions; existing files are not overwritten. Subsequent
+stages reuse that file. Keep uploaded replacements private too.
 Never put real email addresses, tenant mappings or credentials in the tracked
 template. The excluded mailbox is only an authorization test, not a demo user.
 
@@ -233,7 +235,7 @@ pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Exchange -InstallModules
 pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Deploy -ConfirmMailboxScope
 ```
 
-The script asks for trainer details once, resolves operator/user IDs, reads
+The script pauses for you to upload or edit the local configuration, resolves operator/user IDs, reads
 generated identity IDs, and saves only the private file path and operational
 flags to azd. Separate processes isolate Graph and Exchange modules.
 Provisioning leaves delivery disabled; the final command explicitly enables it.

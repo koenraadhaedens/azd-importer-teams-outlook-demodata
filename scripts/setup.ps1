@@ -16,34 +16,20 @@ if (-not $Config) {
 }
 $configPath = [IO.Path]::GetFullPath($Config)
 if ($Stage -eq "Configure" -or ($Stage -eq "Provision" -and -not (Test-Path -LiteralPath $configPath))) {
-    if (Test-Path -LiteralPath $configPath) {
-        $null = Read-DeploymentConfiguration -Path $configPath
-        Write-Host "Existing private configuration reused. Edit that ignored file to change settings."
-    } else {
-        $template = Join-Path (Join-Path $PSScriptRoot "..") "config/config.json"
-        if ($configPath -eq [IO.Path]::GetFullPath($template)) { throw "Do not store trainer settings in the tracked template." }
+    $template = Join-Path (Join-Path $PSScriptRoot "..") "config/config.json"
+    if ($configPath -eq [IO.Path]::GetFullPath($template)) { throw "Do not store trainer settings in the tracked template." }
+    if (-not (Test-Path -LiteralPath $configPath)) {
         $configuration = Get-Content -LiteralPath $template -Raw | ConvertFrom-Json
-        $configuration.'x-setup'.acmeEmail = Read-Host "Email for certificate notices"
-        $configuration.'x-setup'.outOfScopeTestUpn = Read-Host "Existing sixth mailbox UPN (excluded from demo access)"
-        foreach ($user in $configuration.'x-demo'.users) {
-            $user.displayName = Read-Host "Display name for scenario user '$($user.key)'"
-            $user.userPrincipalName = Read-Host "Demo mailbox UPN for '$($user.key)'"
-        }
-        $channels = [ordered]@{}
-        while ($alias = Read-Host "Teams channel alias (leave blank when finished; email-only is allowed)") {
-            if ($channels.Contains($alias)) { throw "Channel aliases must be distinct." }
-            $channels[$alias] = @{
-                teamId = Read-Host "Team UUID"
-                channelId = Read-Host "Teams channel ID"
-            }
-        }
-        $configuration.'x-demo'.channels = [pscustomobject]$channels
         $directory = Split-Path -Parent $configPath
         $null = New-Item -ItemType Directory -Path $directory -Force
         Write-PrivateJsonFile -Path $configPath -Value $configuration
-        $null = Read-DeploymentConfiguration -Path $configPath
-        Write-Host "Trainer settings saved in the private local file. Do not commit or share it."
     }
+    Write-Host "Upload your configuration to this path, or edit the file there: $configPath"
+    Write-Host "Set x-setup, the five x-demo.users, optional x-demo.channels, and published services image references."
+    Write-Host "Keep this local file private. Do not commit or share it, or edit the tracked config/config.json template."
+    $null = Read-Host "Press Enter after uploading or saving the file to continue"
+    $null = Read-DeploymentConfiguration -Path $configPath
+    Write-Host "Private configuration validated. Subsequent stages will use this file."
     if ($Stage -eq "Configure") { return }
 }
 $configuration = Read-DeploymentConfiguration -Path $configPath

@@ -46,6 +46,7 @@ function Reset-State {
         tested = [System.Collections.Generic.List[string]]::new()
         exchangePrincipal = $null
         prompts = [System.Collections.Generic.Queue[string]]::new()
+        onConfirm = $null
     }
     Write-TestConfig
 }
@@ -92,7 +93,12 @@ function global:azd {
 }
 function global:Read-Host {
     param([string]$Prompt)
+    Assert ($Prompt -eq "Press Enter after uploading or saving the file to continue") "Setup must only prompt to confirm the local file is ready"
     if ($global:setupMock.prompts.Count -eq 0) { throw "Unexpected interactive prompt: $Prompt" }
+    if ($global:setupMock.onConfirm) {
+        Assert ($global:setupMock.calls.Count -eq 0) "Setup must pause before Azure operations"
+        & $global:setupMock.onConfirm
+    }
     return $global:setupMock.prompts.Dequeue()
 }
 function global:Get-Module {
@@ -188,20 +194,22 @@ try {
 
     Reset-State
     Remove-Item -LiteralPath $configPath
-    foreach ($answer in @("notices@example.org", "excluded@example.org")) {
-        $global:setupMock.prompts.Enqueue($answer)
-    }
-    foreach ($index in 1..5) {
-        $global:setupMock.prompts.Enqueue("Demo user $index")
-        $global:setupMock.prompts.Enqueue("user$index@example.org")
+    $global:setupMock.onConfirm = {
+        $templateCopy = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+        Assert ($templateCopy.'x-demo'.users[0].userPrincipalName -like '*@contoso.onmicrosoft.com') "Create a demo-only template before pausing"
+        Write-TestConfig
     }
     $global:setupMock.prompts.Enqueue("")
     & $scriptPath -Stage Configure -Config $configPath
-    Assert ($global:setupMock.prompts.Count -eq 0 -and $global:setupMock.calls.Count -eq 0) "Collect configuration without Azure operations"
+    Assert ($global:setupMock.prompts.Count -eq 0 -and $global:setupMock.calls.Count -eq 0) "Confirm the edited file without Azure operations"
     $private = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-    Assert ($private.'x-demo'.users[0].userPrincipalName -eq "user1@example.org") "Persist entered demo users"
+    Assert ($private.'x-demo'.users[0].userPrincipalName -eq "user1@example.org") "Read demo users from the edited file"
+    $global:setupMock.onConfirm = $null
+    $global:setupMock.prompts.Enqueue("")
+    $before = Get-Content -LiteralPath $configPath -Raw
     & $scriptPath -Stage Configure -Config $configPath
-    Assert ($global:setupMock.prompts.Count -eq 0) "Reuse settings without asking again"
+    Assert ($global:setupMock.prompts.Count -eq 0) "Confirm existing files without individual setting prompts"
+    Assert ((Get-Content -LiteralPath $configPath -Raw) -ceq $before) "Do not overwrite an existing uploaded configuration"
     if (-not $IsWindows) {
         Assert ([IO.File]::GetUnixFileMode($configPath) -eq
             ([IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite)) "Private file must be owner-only"
@@ -213,7 +221,38 @@ try {
             $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -ne $user
         }).Count -eq 0) "Private file must grant access only to the current Windows user"
     }
-    Write-Host "PASS: configuration validation, operator resolution, saved settings, confirmation gates and native failure handling."
+    Reset-State
+    Write-TestConfig -Email ""
+    $global:setupMock.onConfirm = { Write-TestConfig }
+    $global:setupMock.prompts.Enqueue("")
+    & $scriptPath -Stage Configure -Config $configPath
+    Assert ($global:setupMock.prompts.Count -eq 0) "Allow an existing invalid file to be corrected before validation"
+
+    Reset-State
+    Remove-Item -LiteralPath $configPath
+    $global:setupMock.prompts.Enqueue("")
+    Expect-Failure @{ Stage = "Configure" } "do not deploy template users"
+    Assert ($global:setupMock.calls.Count -eq 0) "Unedited template must fail validation before Azure operations"
+
+    Reset-State
+    Remove-Item -LiteralPath $configPath
+    $global:setupMock.onConfirm = {
+        Remove-Item -LiteralPath $configPath
+        Write-TestConfig
+    }
+    $global:setupMock.prompts.Enqueue("")
+    & $scriptPath -Stage Provision -Config $configPath -ConfirmDemoTenant
+    Assert ($global:setupMock.prompts.Count -eq 0 -and $global:setupMock.calls.Count -eq 6) "Provision must pause for a missing config and use the uploaded replacement"
+
+    Reset-State
+    $templatePath = Join-Path (Join-Path $PSScriptRoot "..") "config/config.json"
+    $templateBefore = Get-Content -LiteralPath $templatePath -Raw
+    $failure = $null
+    try { & $scriptPath -Stage Configure -Config $templatePath } catch { $failure = $_.Exception.Message }
+    Assert ($failure -like "*tracked template*") "Reject the tracked template as the editable private file"
+    Assert ((Get-Content -LiteralPath $templatePath -Raw) -ceq $templateBefore) "Keep the published demo template unchanged"
+
+    Write-Host "PASS: local-file confirmation, configuration validation, operator resolution, saved settings, confirmation gates and native failure handling."
 } finally {
     foreach ($name in $savedEnvironment.Keys) {
         [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])

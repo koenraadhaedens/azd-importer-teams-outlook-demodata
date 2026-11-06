@@ -47,22 +47,30 @@ az account show --query "{subscription:name,tenantId:tenantId}" --output table
 Use `az account set --subscription "<subscription-id>"` if needed. Complete azd
 sign-in with your CDX deployment account.
 
-## 2. Answer the setup questions once
+## 2. Upload or edit your local configuration
 
 ```powershell
 pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Configure
 ```
 
-The script asks for certificate-notice email, an excluded test mailbox, the five
-demo users' display names/UPNs, and optional Teams channel aliases/IDs. The stable
-user keys come from the template so the sample scenarios continue to work.
-Leave the channel-alias answer blank for email-only scenarios.
+The script displays the private configuration path and **pauses until you press
+Enter**. It does not ask for names or email addresses individually. If the file
+does not exist, it creates a demo-only copy at **ignored `config/config.local.json`**
+with user-only permissions. Existing files are not overwritten.
 
-Your answers are saved in **ignored `config/config.local.json`**, with access
-restricted to your user. The tracked [config.json](config/config.json) contains
-fictional examples only; do not put real trainer details there.
-Rerunning Configure reuses the saved file without asking again or overwriting it.
-Edit the local file to change settings or published `services` image references.
+While setup is paused, use Cloud Shell's **Upload/Download files > Upload** to
+upload your own `config.json`, then move it to the displayed private path using
+another terminal. Alternatively, open `config/config.local.json` in the Cloud
+Shell editor and edit it. Set the certificate-notice email, excluded test mailbox,
+five demo users' display names/UPNs, optional channel mappings, and published
+`services` image references. Preserve the stable user keys for existing scenarios;
+use `"channels": {}` for email-only scenarios.
+
+Save or finish uploading **before pressing Enter**. Setup then reads and validates
+that file. Rerunning Configure pauses again so you can replace or edit it; later
+stages reuse the saved file without individual questions. The tracked
+[config.json](config/config.json) remains fictional; do not put trainer details there.
+If you replace the private file by uploading, ensure its permissions remain private.
 
 - `acmeEmail`: administrative email for HTTPS certificate notices.
 - `outOfScopeTestUpn`: an **existing sixth mailbox**, not one of `x-demo.users`.
@@ -107,8 +115,9 @@ pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Provision -ConfirmDemoTenant
 
 On a fresh checkout, `azd provision` asks for the new **environment name**,
 **subscription**, and **location**. Select the same tenant/subscription as Azure
-CLI. These choices and authentication remain interactive; trainer questions are
-only asked if the private file does not exist. No copying of IDs/settings is needed.
+CLI. These choices and authentication remain interactive. If the private file
+does not exist, setup first pauses for you to upload or edit it and confirm.
+No copying of IDs/settings is needed.
 
 [setup.ps1](scripts/setup.ps1) reads the certificate email, resolves your
 signed-in operator object ID, provisions, and saves operational flags and the

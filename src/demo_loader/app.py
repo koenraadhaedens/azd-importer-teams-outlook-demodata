@@ -169,14 +169,29 @@ def create_app(
         return {"status": "ready"}
 
     @app.get("/login")
-    async def login(request: Request) -> RedirectResponse:
+    async def login(
+        request: Request, login_hint: str | None = None, run_id: str | None = None
+    ) -> RedirectResponse:
         auth: Auth = app.state.auth
+        if login_hint is not None:
+            configured = {
+                str(user.userPrincipalName).lower(): str(user.userPrincipalName)
+                for user in app.state.users.users
+            }
+            if login_hint.lower() not in configured:
+                raise HTTPException(400, "Login hint must match a configured demo user")
+            login_hint = configured[login_hint.lower()]
+        if run_id is not None and run_id not in app.state.engine.journal.snapshot()["runs"]:
+            raise HTTPException(404, "Run not found")
         key, session = auth.new()
+        if run_id is not None:
+            session.return_path = f"/runs/{run_id}"
         session.flow = await asyncio.to_thread(
             auth.client(session).initiate_auth_code_flow,
             SCOPES,
             redirect_uri=cfg.public_url + "/auth/callback",
-            prompt="select_account",
+            prompt="login" if login_hint else "select_account",
+            login_hint=login_hint,
         )
         return cookie(RedirectResponse(session.flow["auth_uri"], status_code=303), key)
 
@@ -204,7 +219,7 @@ def create_app(
         new_key, rotated = auth.new()
         rotated.claims, rotated.cache = claims, session.cache
         auth.sessions.pop(old_key, None)
-        return cookie(RedirectResponse("/", status_code=303), new_key)
+        return cookie(RedirectResponse(session.return_path, status_code=303), new_key)
 
     @app.post("/logout")
     async def logout(request: Request) -> RedirectResponse:

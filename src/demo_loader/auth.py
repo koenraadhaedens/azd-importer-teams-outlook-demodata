@@ -25,6 +25,7 @@ class Session:
     csrf: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     claims: dict[str, Any] = field(default_factory=dict)
     flow: dict[str, Any] = field(default_factory=dict)
+    return_path: str = "/"
     cache: msal.TokenCache = field(default_factory=msal.TokenCache)
     token_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     revoked: bool = False

@@ -10,7 +10,6 @@ Clone the repository and sign in:
 ```powershell
 git clone https://github.com/koenraadhaedens/azd-importer-teams-outlook-demodata.git
 Set-Location azd-importer-teams-outlook-demodata
-azd auth login --use-device-code
 ```
 
 If already cloned, enter the existing folder. Cloud Shell normally signs in

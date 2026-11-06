@@ -33,7 +33,6 @@ administrator steps.
 ```powershell
 git clone https://github.com/koenraadhaedens/azd-importer-teams-outlook-demodata.git
 Set-Location azd-importer-teams-outlook-demodata
-azd auth login --use-device-code
 ```
 
 If you already have the checkout, enter that folder instead of cloning again.

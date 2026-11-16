@@ -98,9 +98,11 @@ See [Entra setup](docs/entra-setup.md) for bootstrap and migration details.
 
 The tracked [config/config.json](config/config.json) is a fictional template,
 not trainer settings. Run [setup.ps1](scripts/setup.ps1) with `-Stage Configure`
-to answer the certificate email, excluded test mailbox, demo-user keys and
-optional channel questions once. It creates ignored `config/config.local.json`
-with user-only file permissions. Subsequent stages reuse that file.
+to pause while you upload or edit your private configuration, then press Enter
+to validate and continue. No names or email addresses are prompted individually.
+If needed, it creates a demo-only copy at ignored `config/config.local.json`
+with user-only file permissions; existing files are not overwritten. Subsequent
+stages reuse that file. Keep uploaded replacements private too.
 Never put real email addresses, tenant mappings or credentials in the tracked
 template. The excluded mailbox is only an authorization test, not a demo user.
 
@@ -225,25 +227,24 @@ and a new azd environment. No settings from another deployment are required.
 
 ### Azure portal Cloud Shell (PowerShell)
 
-For the recommended staged-script setup using already-published images, see
+For the recommended single-command setup using already-published images, see
 [Install from Azure Cloud Shell](installtocloudshell.md).
-After authenticating azd/Azure CLI,
-run each command only after the previous stage succeeds:
+After authenticating azd/Azure CLI, run:
 
 ```powershell
-pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Configure
-pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Provision -ConfirmDemoTenant
-pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Entra -InstallModules
-pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Exchange -InstallModules
-# Run only after reviewing all configured and one excluded mailbox results.
-pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Deploy -ConfirmMailboxScope
+pwsh -NoProfile -File ./scripts/setup.ps1
 ```
 
-The script asks for trainer details once, resolves operator/user IDs, reads
-generated identity IDs, and saves only the private file path and operational
-flags to azd. Separate processes isolate Graph and Exchange modules.
-Provisioning leaves delivery disabled; the final command explicitly enables it.
-The detailed manual commands below remain available for custom administration.
+First upload or edit the local configuration at the script's pause, then press
+Enter. Setup runs the deployment stages automatically and installs missing
+administrator modules. Follow sign-in prompts and confirm the demo tenant.
+After Exchange succeeds, setup automatically confirms mailbox scope and deploys
+with real delivery enabled; no final YES prompt is required. Review the mailbox
+results before running demos.
+Separate processes isolate Graph and Exchange modules. Only the private file
+path and operational flags are saved to azd.
+Individual `-Stage` commands and the detailed manual commands below remain
+available for recovery and custom administration.
 
 #### 1. Prepare the tenant and container images
 
@@ -360,7 +361,7 @@ The current helper resolves equivalent exact-address scopes automatically and
 uses the actual scope name with a principal-specific assignment; reruns verify
 the existing assignment's owner, role and scope. The existing scope alone is
 not permission for the new identity. Follow the
-[Exchange recovery commands](installtocloudshell.md#recovering-from-an-existing-exchange-scope-after-a-fresh-deployment);
+[Exchange recovery commands](docs/troubleshooting.md#recovering-from-an-existing-exchange-scope-after-a-fresh-deployment);
 verify all configured mailboxes and one excluded mailbox before confirming scope.
 This error does not prove that the web app registration was reused:
 `WEB_CLIENT_ID` identifies the web app, while `AZURE_IDENTITY_CLIENT_ID` and
@@ -641,7 +642,7 @@ service-principal registrations, management scopes and role assignments, federat
 pipeline identities are **tenant-level/external resources**, not
 removed by azd down. Remove them using [operations](docs/operations.md).
 If reinstalling into the same tenant, follow the
-[Exchange recovery guidance](installtocloudshell.md#recovering-from-an-existing-exchange-scope-after-a-fresh-deployment)
+[Exchange recovery guidance](docs/troubleshooting.md#recovering-from-an-existing-exchange-scope-after-a-fresh-deployment)
 instead of assuming a new resource group resets Microsoft 365 permissions.
 
 ## Security warnings and known limitations

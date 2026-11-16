@@ -1,5 +1,5 @@
 param(
-    [Parameter(Mandatory)][ValidateSet("Configure", "Provision", "Entra", "Exchange", "Deploy")][string]$Stage,
+    [ValidateSet("Install", "Configure", "Provision", "Entra", "Exchange", "Deploy")][string]$Stage = "Install",
     [string]$Config,
     [switch]$ConfirmDemoTenant,
     [switch]$ConfirmMailboxScope,
@@ -15,49 +15,45 @@ if (-not $Config) {
     }
 }
 $configPath = [IO.Path]::GetFullPath($Config)
+if ($Stage -eq "Install") {
+    function Invoke-SetupStage {
+        param([string]$Name, [string[]]$Arguments)
+        Write-Host "Setup: $Name"
+        & pwsh -NoProfile -File $PSCommandPath -Stage $Name -Config $configPath @Arguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "Setup stopped at $Name. Resolve the error, then retry: pwsh -NoProfile -File `"$PSCommandPath`" -Stage $Name -Config `"$configPath`" $($Arguments -join ' ')"
+        }
+    }
+
+    Invoke-SetupStage "Configure"
+    & az account show --query "{subscription:name,tenantId:tenantId}" --output table
+    if ($LASTEXITCODE -ne 0) { throw "Authenticate Azure CLI in your demo tenant before continuing." }
+    if (-not $ConfirmDemoTenant -and
+        (Read-Host "Type YES to confirm this is your isolated demo tenant/subscription") -ne "YES") {
+        throw "Setup cancelled before provisioning."
+    }
+    Invoke-SetupStage "Provision" @("-ConfirmDemoTenant")
+    Invoke-SetupStage "Entra" @("-InstallModules")
+    Invoke-SetupStage "Exchange" @("-InstallModules")
+    Write-Host "Exchange setup complete. Continuing to deployment with demo delivery enabled."
+    Invoke-SetupStage "Deploy" @("-ConfirmMailboxScope")
+    return
+}
 if ($Stage -eq "Configure" -or ($Stage -eq "Provision" -and -not (Test-Path -LiteralPath $configPath))) {
-    if (Test-Path -LiteralPath $configPath) {
-        $null = Read-DeploymentConfiguration -Path $configPath
-        Write-Host "Existing private configuration reused. Edit that ignored file to change settings."
-    } else {
-        $template = Join-Path (Join-Path $PSScriptRoot "..") "config/config.json"
-        if ($configPath -eq [IO.Path]::GetFullPath($template)) { throw "Do not store trainer settings in the tracked template." }
+    $template = Join-Path (Join-Path $PSScriptRoot "..") "config/config.json"
+    if ($configPath -eq [IO.Path]::GetFullPath($template)) { throw "Do not store trainer settings in the tracked template." }
+    if (-not (Test-Path -LiteralPath $configPath)) {
         $configuration = Get-Content -LiteralPath $template -Raw | ConvertFrom-Json
-        $configuration.'x-setup'.acmeEmail = Read-Host "Email for certificate notices"
-        $configuration.'x-setup'.outOfScopeTestUpn = Read-Host "Existing excluded mailbox UPN (not a demo user)"
-        $keys = @($configuration.'x-demo'.users.key)
-        $answer = Read-Host "Demo user keys, comma-separated (leave blank for $($keys -join ', '))"
-        if (-not [string]::IsNullOrWhiteSpace($answer)) {
-            $keys = @($answer.Split(',') | ForEach-Object { $_.Trim() })
-        }
-        if (@($keys | Where-Object { $_ -cnotmatch '^[a-z][a-z0-9_-]{0,39}$' }).Count -gt 0 -or
-            @($keys | Sort-Object -Unique).Count -ne $keys.Count) {
-            throw "Supply distinct valid demo-user keys."
-        }
-        $configuration.'x-demo'.users = @(
-            foreach ($key in $keys) {
-                [pscustomobject]@{
-                    key = $key
-                    displayName = Read-Host "Display name for scenario user '$key'"
-                    userPrincipalName = Read-Host "Demo mailbox UPN for '$key'"
-                }
-            }
-        )
-        $channels = [ordered]@{}
-        while ($alias = Read-Host "Teams channel alias (leave blank when finished; email-only is allowed)") {
-            if ($channels.Contains($alias)) { throw "Channel aliases must be distinct." }
-            $channels[$alias] = @{
-                teamId = Read-Host "Team UUID"
-                channelId = Read-Host "Teams channel ID"
-            }
-        }
-        $configuration.'x-demo'.channels = [pscustomobject]$channels
         $directory = Split-Path -Parent $configPath
         $null = New-Item -ItemType Directory -Path $directory -Force
         Write-PrivateJsonFile -Path $configPath -Value $configuration
-        $null = Read-DeploymentConfiguration -Path $configPath
-        Write-Host "Trainer settings saved in the private local file. Do not commit or share it."
     }
+    Write-Host "Upload your configuration to this path, or edit the file there: $configPath"
+    Write-Host "Set x-setup, your x-demo.users list (any nonempty count), optional x-demo.channels, and published services image references."
+    Write-Host "Keep this local file private. Do not commit or share it, or edit the tracked config/config.json template."
+    $null = Read-Host "Press Enter after uploading or saving the file to continue"
+    $null = Read-DeploymentConfiguration -Path $configPath
+    Write-Host "Private configuration validated. Subsequent stages will use this file."
     if ($Stage -eq "Configure") { return }
 }
 $configuration = Read-DeploymentConfiguration -Path $configPath
@@ -68,9 +64,8 @@ $excludedUpn = [string]$configuration.'x-setup'.outOfScopeTestUpn
 
 function Invoke-SetupAzd {
     param([string[]]$Arguments)
-    $result = & azd @Arguments
+    & azd @Arguments
     if ($LASTEXITCODE -ne 0) { throw "azd $($Arguments -join ' ') failed; resolve the error before continuing." }
-    return $result
 }
 
 function Get-SetupValue {
@@ -83,7 +78,6 @@ function Get-SetupValue {
 function Get-SetupUserId {
     param([string]$Upn)
     $arguments = @("ad", "user", "show", "--id", $Upn, "--query", "id", "--output", "tsv")
-    if ($script:subscriptionId) { $arguments += @("--subscription", $script:subscriptionId) }
     $result = & az @arguments
     if ($LASTEXITCODE -ne 0) { throw "Could not resolve Entra user: $Upn" }
     return ([guid]::Parse(($result -join "").Trim())).ToString()
@@ -110,12 +104,12 @@ try {
         $env:DEMO_TENANT_CONFIRMED = "true"
         $env:DELIVERY_ENABLED = "false"
         $env:MAILBOX_SCOPE_CONFIRMED = "false"
-        Invoke-SetupAzd @("provision") | Out-Host
+        Invoke-SetupAzd @("provision")
         foreach ($name in @("OPERATOR_IDS", "DEMO_CONFIG_FILE", "DEMO_TENANT_CONFIRMED",
             "DELIVERY_ENABLED", "MAILBOX_SCOPE_CONFIRMED")) {
             Invoke-SetupAzd @("env", "set", $name, [Environment]::GetEnvironmentVariable($name)) | Out-Host
         }
-        Write-Host "Provisioned with delivery disabled. Next: run the Entra stage in a clean PowerShell process."
+        Write-Host "Provisioning complete; delivery is disabled."
         return
     }
 
@@ -135,7 +129,7 @@ try {
         & (Join-Path $PSScriptRoot "setup-entra.ps1") `
             -WebClientId ([guid](Get-SetupValue "WEB_CLIENT_ID")) `
             -AllowedObjectIds @($allowedIds | Sort-Object -Unique) -GrantConsent
-        Write-Host "Next: run the Exchange stage in a separate clean PowerShell process."
+        Write-Host "Entra user assignments and consent complete."
     } elseif ($Stage -eq "Exchange") {
         if (Get-Module Microsoft.Graph.*) {
             throw "Run Exchange in a clean process: pwsh -NoProfile -File scripts/setup.ps1 -Stage Exchange"
@@ -157,7 +151,7 @@ try {
         Invoke-SetupAzd @("env", "set", "DEMO_CONFIG_FILE", $configPath) | Out-Host
         Invoke-SetupAzd @("env", "set", "MAILBOX_SCOPE_CONFIRMED", "true") | Out-Host
         Invoke-SetupAzd @("env", "set", "DELIVERY_ENABLED", "true") | Out-Host
-        Invoke-SetupAzd @("deploy") | Out-Host
+        Invoke-SetupAzd @("deploy")
         Write-Host "Application URL: $(Get-SetupValue 'PUBLIC_URL')"
     }
 } finally {

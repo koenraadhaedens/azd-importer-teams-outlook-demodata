@@ -1,6 +1,7 @@
 import io
 import json
 from pathlib import Path
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -12,6 +13,68 @@ from demo_loader.auth import Auth
 from demo_loader.config import Settings
 from demo_loader.models import Channel, Scenario
 from demo_loader.security import redact
+
+
+@pytest.mark.parametrize("with_hint", [False, True])
+@pytest.mark.parametrize("with_run", [False, True])
+def test_isolated_login_and_callback(
+    client: TestClient,
+    settings: Settings,
+    fake: FakeGateway,
+    raw_scenario: dict,
+    monkeypatch: pytest.MonkeyPatch,
+    with_hint: bool,
+    with_run: bool,
+) -> None:
+    msal_client = Mock()
+    msal_client.initiate_auth_code_flow.return_value = {
+        "auth_uri": "https://login.microsoftonline.com/test",
+        "state": "test-state",
+    }
+    msal_client.acquire_token_by_auth_code_flow.return_value = {
+        "access_token": "test-token",
+        "id_token_claims": {"oid": fake.ids["adele"], "tid": str(settings.tenant_id)},
+    }
+    monkeypatch.setattr(Auth, "client", lambda self, session: msal_client)
+    params = {}
+    if with_hint:
+        params["login_hint"] = "ADELEV@contoso.onmicrosoft.com"
+    destination = "/"
+    if with_run:
+        run_id = client.app.state.engine.create(
+            Scenario.model_validate(raw_scenario), str(settings.operator_ids[0])
+        )
+        params["run_id"] = run_id
+        destination = f"/runs/{run_id}"
+    response = client.get("/login", params=params, follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "https://login.microsoftonline.com/test"
+    options = msal_client.initiate_auth_code_flow.call_args.kwargs
+    assert options["login_hint"] == ("adelev@contoso.onmicrosoft.com" if with_hint else None)
+    assert options["prompt"] == ("login" if with_hint else "select_account")
+    assert options["redirect_uri"] == settings.public_url + "/auth/callback"
+    old_key = client.cookies.get("demo_session")
+    response = client.get("/auth/callback?state=test-state", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == destination
+    assert client.cookies.get("demo_session") != old_key
+    assert old_key not in client.app.state.auth.sessions
+
+
+@pytest.mark.parametrize(
+    ("params", "status"),
+    [
+        ({"login_hint": "unknown@example.org"}, 400),
+        ({"login_hint": ""}, 400),
+        ({"run_id": "missing"}, 404),
+        ({"run_id": "https://evil.example"}, 404),
+    ],
+)
+def test_login_rejects_invalid_hints_and_destinations(
+    client: TestClient, params: dict[str, str], status: int
+) -> None:
+    assert client.get("/login", params=params, follow_redirects=False).status_code == status
+    assert not client.app.state.auth.sessions
 
 
 def test_auth_and_security_headers(client: TestClient) -> None:

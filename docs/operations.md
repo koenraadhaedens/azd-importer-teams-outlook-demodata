@@ -23,6 +23,41 @@ Do not sign out to switch authors while expecting that session's background work
 to continue: explicit sign-out revokes future sends authorized by that session.
 Operator cancellation stops future work for the whole run.
 
+### Open isolated sign-ins from Windows
+
+After deploying the updated app, run this helper on your **Windows desktop**
+(not Azure Cloud Shell). Copy the app base URL and the run ID from the run page's
+`/runs/<run-id>` address:
+
+```powershell
+.\scripts\open-teams-signins.ps1 `
+    -Url "https://your-app.westeurope.azurecontainer.io" `
+    -Config ".\config\config.local.json" `
+    -RunId "your-run-id"
+```
+
+By default this opens Edge for every user in `x-demo.users`. Use
+`-UserKeys adele,alex` to open only the Teams authors you need, `-Browser Chrome`
+to use Chrome, or `-BrowserPath "C:\path\to\msedge.exe"` for a nonstandard install.
+`-Config` defaults to `DEMO_CONFIG_FILE`, then `config\config.local.json`.
+Omit `-RunId` to land on the run list instead.
+
+Each user gets a separate, fresh user-data directory and private window, rather
+than multiple private windows sharing one profile. The app supplies Microsoft's
+`login_hint` and requests interactive authentication; ordinary sign-in without a
+hint still uses the account picker. The hint is not an authorization grant.
+Microsoft/tenant policies determine the password, MFA or passwordless screens;
+the helper cannot bypass them or guarantee a particular screen.
+
+After sign-in, each user must still click **Start / resume my background Teams
+messages**. The script does not read passwords, automate consent, or send messages.
+Do not sign out while work is pending. Fresh profile directories are printed by
+the helper and are not automatically deleted; close all their windows before
+manually deleting the printed invocation folder. Treat browser profile files as
+sensitive even though private browsing reduces retained sign-in data. Managed
+browser policies that disable private mode or override profile isolation may
+prevent this workflow.
+
 Before each Teams send, MSAL obtains a current access token from its memory-only
 cache, using a refresh token when necessary. Sign-in requests `offline_access`;
 existing users must sign in again with the updated consent. A run-author worker

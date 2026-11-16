@@ -1,4 +1,5 @@
 import copy
+import json
 from pathlib import Path
 
 import pytest
@@ -51,14 +52,53 @@ def test_invalid_schema() -> None:
         parse_scenario(Path("examples/demo-scenario-invalid.yaml").read_bytes(), SCHEMA)
 
 
-def test_five_users_and_missing_configuration(tmp_path: Path) -> None:
+def test_empty_users_and_missing_configuration(tmp_path: Path) -> None:
     configuration = load_json(Path("config/config.json").read_bytes())
     users = {"users": configuration["x-demo"]["users"]}
-    users["users"].pop()
+    users["users"].clear()
     with pytest.raises(ValidationError):
         Users.model_validate(users)
     with pytest.raises(InputError, match="missing"):
         load_config(tmp_path / "missing.json")
+
+
+@pytest.mark.parametrize("count", [1, 6, 25, 45])
+def test_scenario_with_variable_users(raw_scenario: dict, count: int) -> None:
+    users = Users.model_validate(
+        {
+            "users": [
+                {
+                    "key": f"user{index}",
+                    "displayName": f"User {index}",
+                    "userPrincipalName": f"user{index}@example.org",
+                }
+                for index in range(count)
+            ]
+        }
+    )
+    keys = [user.key for user in users.users]
+    raw_scenario["requiredUsers"] = keys
+    raw_scenario["activities"] = [
+        {
+            "id": f"mail{index}",
+            "type": "email",
+            "user": key,
+            "to": [keys[-1]],
+            "subject": "Demo",
+            "body": f"Hello {{{{user.{keys[-1]}.displayName}}}}",
+        }
+        for index, key in enumerate(keys)
+    ]
+    scenario = parse_scenario(json.dumps(raw_scenario).encode(), SCHEMA)
+    prepared = prepare(scenario, users, Resources())
+    assert len(prepared.requiredUsers) == count
+    assert prepared.activities[-1].user == keys[-1]
+    assert prepared.activities[-1].body == f"Hello User {count - 1}"
+
+    raw_scenario["requiredUsers"] = [keys[-1]]
+    raw_scenario["activities"] = [raw_scenario["activities"][-1]]
+    subset = prepare(parse_scenario(json.dumps(raw_scenario).encode(), SCHEMA), users, Resources())
+    assert subset.requiredUsers == [keys[-1]]
 
 
 @pytest.mark.parametrize("mutation", ["duplicate", "cycle", "unknown", "type", "reply"])

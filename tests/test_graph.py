@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from demo_loader.graph import GraphError, GraphGateway, retry_after
-from demo_loader.models import Email, Resources, TeamsMessage, TeamsReply
+from demo_loader.models import Email, Resources, TeamsMessage, TeamsReply, Users
 from demo_loader.validation import load_config
 
 
@@ -103,3 +103,48 @@ def test_retry_budget() -> None:
     assert 0 <= retry_after(None, 3) <= 30
     with pytest.raises(GraphError, match="budget"):
         retry_after("3600", 0)
+
+
+@pytest.mark.parametrize(
+    "count,duplicate",
+    [(1, False), (4, False), (5, False), (6, False), (25, False), (45, False), (6, True)],
+)
+async def test_resolve_variable_users(count: int, duplicate: bool) -> None:
+    users = Users.model_validate(
+        {
+            "users": [
+                {
+                    "key": f"user{index}",
+                    "displayName": f"User {index}",
+                    "userPrincipalName": f"user{index}@example.org",
+                }
+                for index in range(count)
+            ]
+        }
+    )
+    ids = {user.key: str(uuid4()) for user in users.users}
+    if duplicate:
+        ids[users.users[-1].key] = ids[users.users[0].key]
+    requests = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        user = users.users[len(requests) - 1]
+        assert request.url.params["$filter"] == (f"userPrincipalName eq '{user.userPrincipalName}'")
+        return httpx.Response(
+            200,
+            json={"value": [{"id": ids[user.key], "userPrincipalName": user.userPrincipalName}]},
+        )
+
+    async def token() -> str:
+        return "test"
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        graph = GraphGateway(client, token, users, Resources())
+        if duplicate:
+            with pytest.raises(GraphError, match="distinct object IDs"):
+                await graph.resolve_users(users)
+            assert not graph.resolved
+        else:
+            assert await graph.resolve_users(users) == ids
+        assert len(requests) == count

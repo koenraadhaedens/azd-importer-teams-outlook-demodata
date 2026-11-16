@@ -15,6 +15,7 @@ function Reset-State {
         mailboxes = @{}
         failScope = $false
         emptyScope = $false
+        excluded = "user6@example.org"
     }
     foreach ($index in 1..6) {
         $global:exchangeMock.mailboxes["user$index@example.org"] = "user$index@example.org"
@@ -85,7 +86,7 @@ function global:New-ManagementRoleAssignment {
 function global:Test-ServicePrincipalAuthorization {
     param($Identity, $Resource)
     $global:exchangeMock.tested.Add([string]$Resource)
-    return [pscustomobject]@{ Resource = $Resource; InScope = $Resource -ne "user6@example.org" }
+    return [pscustomobject]@{ Resource = $Resource; InScope = $Resource -ne $global:exchangeMock.excluded }
 }
 
 try {
@@ -170,6 +171,36 @@ try {
     Reset-State
     $global:exchangeMock.mailboxes["user6@example.org"] = "user1@example.org"
     Expect-Failure $parameters "test UPN resolves to a demo mailbox"
+
+    foreach ($count in @(1, 6, 25, 45)) {
+        Reset-State
+        $state = $global:exchangeMock
+        $variable = $parameters.Clone()
+        $variable.DemoUpns = @((1..$count) | ForEach-Object { "user$_@example.org" })
+        $variable.OutOfScopeTestUpn = "excluded@example.org"
+        $state.excluded = $variable.OutOfScopeTestUpn
+        foreach ($upn in $variable.DemoUpns + $variable.OutOfScopeTestUpn) {
+            $state.mailboxes[$upn] = $upn
+        }
+        & $scriptPath @variable | Out-Null
+        Assert ($state.tested.Count -eq ($count + 1)) "Test all configured mailboxes and one excluded mailbox"
+        $filter = $state.scopes[0].RecipientFilter
+        Assert ([regex]::Matches($filter, "PrimarySmtpAddress -eq").Count -eq $count) "Scope must contain exactly the configured addresses"
+        & $scriptPath @variable | Out-Null
+        Assert ($state.scopes.Count -eq 1 -and $state.assignments.Count -eq 1) "Variable-size scopes must be reusable"
+        $state.mailboxes[$variable.OutOfScopeTestUpn] = $variable.DemoUpns[-1]
+        Expect-Failure $variable "test UPN resolves to a demo mailbox"
+        if ($count -gt 1) {
+            $state.mailboxes[$variable.OutOfScopeTestUpn] = $variable.OutOfScopeTestUpn
+            $state.mailboxes[$variable.DemoUpns[-1]] = $variable.DemoUpns[0]
+            Expect-Failure $variable "resolve to distinct mailboxes"
+        }
+    }
+
+    Reset-State
+    $duplicate = $parameters.Clone()
+    $duplicate.DemoUpns = @($parameters.DemoUpns) + "USER1@EXAMPLE.ORG"
+    Expect-Failure $duplicate "distinct demo UPNs"
     Write-Host "PASS: Exchange scope reuse, fresh installs, idempotency, new identities, exact filters, conflicts and missing scopes."
 } finally {
     foreach ($name in @("Get-Module", "Connect-ExchangeOnline", "Get-EXOMailbox",

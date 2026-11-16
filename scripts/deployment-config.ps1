@@ -39,16 +39,16 @@ function Read-DeploymentConfiguration {
     $configuration = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop |
         ConvertFrom-Json -ErrorAction Stop
     $users = @($configuration.'x-demo'.users)
-    if ($users.Count -ne 5 -or
+    if ($users.Count -lt 1 -or
         @($users | Where-Object {
             $_.key -notmatch '^[a-z][a-z0-9_-]{0,39}$' -or
             [string]::IsNullOrWhiteSpace($_.displayName) -or
             $_.userPrincipalName -notmatch '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+$' -or
             $_.userPrincipalName -like '*@contoso.onmicrosoft.com'
         }).Count -gt 0 -or
-        @($users.key | Sort-Object -Unique).Count -ne 5 -or
-        @($users.userPrincipalName | Sort-Object -Unique).Count -ne 5) {
-        throw "Configure five distinct real demo-user keys, display names and UPNs in x-demo.users; do not deploy template users."
+        @($users.key | Sort-Object -Unique).Count -ne $users.Count -or
+        @($users.userPrincipalName | Sort-Object -Unique).Count -ne $users.Count) {
+        throw "Configure one or more distinct real demo-user keys, display names and UPNs in x-demo.users; do not deploy template users."
     }
     if ($null -eq $configuration.'x-demo'.channels -or
         $configuration.'x-demo'.channels -isnot [pscustomobject]) {
@@ -72,7 +72,7 @@ function Read-DeploymentConfiguration {
     }
     $excluded = [string]$configuration.'x-setup'.outOfScopeTestUpn
     if ($excluded -notmatch '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+$' -or $excluded -in $users.userPrincipalName) {
-        throw "Configure x-setup.outOfScopeTestUpn as an existing sixth mailbox, not a demo user."
+        throw "Configure x-setup.outOfScopeTestUpn as an existing excluded mailbox, not a demo user."
     }
     return $configuration
 }

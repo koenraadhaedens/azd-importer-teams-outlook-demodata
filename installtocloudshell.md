@@ -53,9 +53,10 @@ sign-in with your CDX deployment account.
 pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Configure
 ```
 
-The script asks for certificate-notice email, an excluded test mailbox, the five
-demo users' display names/UPNs, and optional Teams channel aliases/IDs. The stable
-user keys come from the template so the sample scenarios continue to work.
+The script asks for certificate-notice email, an excluded test mailbox, a
+comma-separated list of demo-user keys, their display names/UPNs, and optional
+Teams channel aliases/IDs. Leave the keys answer blank to use the five template
+keys and keep the sample scenarios working, or supply any nonempty set of keys.
 Leave the channel-alias answer blank for email-only scenarios.
 
 Your answers are saved in **ignored `config/config.local.json`**, with access
@@ -65,12 +66,12 @@ Rerunning Configure reuses the saved file without asking again or overwriting it
 Edit the local file to change settings or published `services` image references.
 
 - `acmeEmail`: administrative email for HTTPS certificate notices.
-- `outOfScopeTestUpn`: an **existing sixth mailbox**, not one of `x-demo.users`.
+- `outOfScopeTestUpn`: an **existing excluded mailbox**, not one of `x-demo.users`.
   It is only used to test that the runtime identity cannot access it. Setup does
   not assign this user to the app or send mail to it.
 
 Configuration is validated before deployment. The Exchange helper additionally
-rejects aliases that resolve to one of the five allowed mailboxes.
+rejects aliases that resolve to any configured demo mailbox.
 Treat this file and Cloud Shell storage as private administrator data; it is not
 encrypted at rest by the script. Do not share it or include it in support logs.
 Custom files can be supplied with `-Config <path>` on every stage; keep them
@@ -124,7 +125,7 @@ pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Entra -InstallModules
 ```
 
 The script reads the selected environment's web client ID and configured operator
-IDs, resolves the five demo users, and calls [setup-entra.ps1](scripts/setup-entra.ps1)
+IDs, resolves all configured demo users, and calls [setup-entra.ps1](scripts/setup-entra.ps1)
 to assign them and grant delegated `ChannelMessage.Send` / `offline_access`
 consent. `-InstallModules` installs only missing administrator modules for the
 current user; omit it if they are already installed.
@@ -133,7 +134,7 @@ Complete module sign-in as an authorized administrator **in the CDX tenant**.
 If module sign-in is unavailable in Cloud Shell, use the Entra portal or an
 administrator workstation: find the app by `azd env get-value WEB_CLIENT_ID`,
 grant admin consent under **App registrations > API permissions**, then assign
-the operator and five users under **Enterprise applications > Users and groups**.
+the operator and configured users under **Enterprise applications > Users and groups**.
 Keep **Assignment required = Yes**.
 
 ## 5. Configure and review Exchange mailbox scope
@@ -147,12 +148,12 @@ keeps Microsoft Graph and Exchange assemblies isolated; no nested interactive
 shell or manual variable reload is needed. Do not dot-source these stage commands
 into a process that already loaded Graph modules.
 
-The script reads the runtime identity IDs, environment name, five demo users,
+The script reads the runtime identity IDs, environment name, configured demo users,
 and excluded test mailbox, then calls [setup-exchange.ps1](scripts/setup-exchange.ps1).
 Complete sign-in as your CDX Exchange administrator.
 
-**Review before continuing:** `Application Mail.Send` must show five demo
-mailboxes with `InScope = True` and the sixth with `InScope = False`. Allow time
+**Review before continuing:** `Application Mail.Send` must show every configured
+demo mailbox with `InScope = True` and the excluded mailbox with `InScope = False`. Allow time
 for propagation and rerun this stage if necessary. Also review additive grants:
 do not grant unscoped Graph application `Mail.Send` or leave other Exchange
 assignments that broaden access. This review is not automatically confirmed.
@@ -169,7 +170,7 @@ tenant-level Entra apps, Exchange service-principal registrations, scopes, or
 role assignments. A fresh environment is not a completely clean Microsoft 365
 tenant.
 
-The current helper reuses a scope with exactly the same five primary SMTP
+The current helper reuses a scope with exactly the same configured primary SMTP
 predicates, regardless of their order, case or parentheses. Each runtime identity
 gets its own `DemoMailSend-<principal-object-id>` assignment. It never changes
 another identity's scope or assignment.
@@ -180,7 +181,8 @@ select the intended environment with `azd env list` /
 `azd env select <name>`, and rerun the Exchange stage above. Do not retry a failing
 assignment with a guessed scope name.
 
-The helper prints the resolved scope name and tests all six mailboxes.
+The helper prints the resolved scope name and tests all configured mailboxes plus
+the excluded mailbox.
 Multiple equivalent scopes or conflicting scopes/principals/assignments require
 manual review. For an explicitly reviewed scope name, use
 [setup-exchange.ps1](scripts/setup-exchange.ps1) directly with `-ScopeName` and
@@ -188,9 +190,30 @@ the selected environment's runtime identity IDs.
 Do not remove old registrations or assignments until confirmed retired.
 `WEB_CLIENT_ID` identifies the web app, not the runtime identity used for Exchange.
 
+### Changing the configured users
+
+The private `x-demo.users` list can contain any nonempty set of users. Scenarios
+can select different subsets for sales, production or other demos through
+`requiredUsers`; they do not have to include everyone in the configuration.
+Adding a user does not create their account, mailbox, license or Teams membership.
+
+For an existing deployment, disable delivery before changing users, update the
+private configuration, and rerun the Entra stage. Have an Exchange administrator
+review and reconcile the exact mailbox scope and the runtime identity's mail
+assignment before enabling delivery again. The helper deliberately refuses to
+overwrite a named scope with different membership or a conflicting assignment;
+simply editing JSON does not update Exchange permissions. Remove obsolete grants
+only after review, test every configured mailbox and one excluded mailbox, then
+redeploy with `-ConfirmMailboxScope`. Changed mappings block execution of old runs.
+
+Legacy scope names containing `FiveMailboxes` are retained for compatibility;
+the name does not limit membership. An older application image must be rebuilt,
+published and deployed once to remove its five-user validation. Later user-list
+changes require only permission review and redeployment, not another rebuild.
+
 ## 6. Confirm scope and deploy
 
-Only after the five allowed / one excluded results and additive grants have
+Only after all configured / one excluded results and additive grants have
 been reviewed:
 
 ```powershell

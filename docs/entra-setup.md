@@ -101,12 +101,12 @@ azd env get-value PUBLIC_URL
 Now an administrator must:
 
 1. Grant tenant-admin-reviewed delegated `ChannelMessage.Send` consent.
-2. Assign the operator(s) and five demo users, or explicit permitted security
+2. Assign the operator(s) and configured demo users, or explicit permitted security
    groups, to the enterprise app. Keep assignment required = Yes.
 3. Configure OPERATOR_IDS or AUTHORIZED_GROUP_ID separately for application
    operator privileges; enterprise assignment is not an operator grant.
 4. Verify postprovision reported runtime `User.Read.All` assigned/already
-   assigned, then configure the five-mailbox Exchange `Application Mail.Send`
+   assigned, then configure the demo-mailbox Exchange `Application Mail.Send`
    scope separately. Federation alone does not grant Graph or mail permissions.
 5. For default anonymous images, no registry grant is required. Only when opting
    into private same-tenant ACR authentication, grant registry pull access as
@@ -162,7 +162,7 @@ MSAL uses a lazy client-assertion callback. It obtains a managed-identity token
 for `api://AzureADTokenExchange/.default` on demand; Azure Identity handles its
 in-memory caching/refresh. That assertion authenticates the web app during
 authorization-code redemption. Delegated Teams tokens belong to the signed-in
-user, not the managed identity. Five authors still require five user sign-ins.
+user, not the managed identity. Each author still requires their own sign-in.
 
 Direct mail/directory access instead requests
 `https://graph.microsoft.com/.default` for the managed identity itself. Keep

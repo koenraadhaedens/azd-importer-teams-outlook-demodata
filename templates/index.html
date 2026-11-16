@@ -19,7 +19,7 @@ All scenarios are previewed before execution. A scenario marked dryRun cannot se
 <section>
   <h2>Resolved demo identities</h2>
   <div class="table-scroll"><table>
-    <caption>Exactly five configured user slots</caption>
+    <caption>{{ users | length }} configured user slots</caption>
     <thead><tr><th>Key</th><th>Name</th><th>UPN</th><th>Resolved object ID</th></tr></thead>
     <tbody>{% for user in users %}
     <tr><td>{{ user.key }}</td><td>{{ user.displayName }}</td>

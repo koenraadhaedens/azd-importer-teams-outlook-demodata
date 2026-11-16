@@ -104,7 +104,7 @@ class Auth:
         for key, oid in self.demo_ids.items():
             if oid == session.claims["oid"]:
                 return key
-        raise HTTPException(403, "Sign in as one of the five assigned demo users")
+        raise HTTPException(403, "Sign in as one of the assigned demo users")
 
     async def token(self, session: Session) -> str:
         async with session.token_lock:

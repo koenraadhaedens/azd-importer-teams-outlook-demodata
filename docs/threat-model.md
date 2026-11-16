@@ -10,7 +10,7 @@ storage, CI/deployer -> Azure control plane.
 |---|---|---|
 | Malicious YAML, alias bombs, unsafe tags, expressions | Bounded ASGI body before multipart parsing; extension/MIME checks; SafeLoader subclass; no aliases/tags/duplicate keys; JSON Schema and typed constraints; no eval/Jinja on content | Parser dependencies still require updates; tests cover hostile documents |
 | Arbitrary/external email recipients, bulk-mail abuse | Logical keys only by default, To/Cc validation, 200 actions/run, 100 stored runs, operator-only upload/start, explicit real-send confirmation, rate/concurrency/batch limits, CDX confirmation | Authorized operator can misuse a demo account; monitor, keep external override false |
-| Excessive Graph permissions | Separate runtime/web identities, directory read only for required startup resolution, no mailbox read, five-mailbox Exchange Application RBAC | Directory User.Read.All is tenant-wide; administrator must verify no additive broad Mail.Send grant |
+| Excessive Graph permissions | Separate runtime/web identities, directory read only for required startup resolution, no mailbox read, configured-mailbox Exchange Application RBAC | Directory User.Read.All is tenant-wide; administrator must verify no additive broad Mail.Send grant |
 | Token theft / cross-tenant login | Tenant-specific MSAL code flow, state/nonce, exact tenant/object checks, allowlists/direct group claims, memory-only access/refresh tokens, opaque Secure HttpOnly SameSite cookie, CSP and CSRF | Explicitly authorized background workers retain refresh capability beyond cookie expiry until completion/pause/cancellation; logout revokes that session's future sends. Browser/memory compromise and shared ACI identity trust with Caddy remain |
 | Group overage bypass | Fail closed; no group-lookup fallback | Large-group users need explicit operator ID or a small direct group |
 | Secret leakage in logs/reports | No access logging, no raw Graph body/error logging, fixed error text, content-free report allowlist, redaction filter, library log levels | Unhandled third-party diagnostics must be reviewed before enabling verbose logs |
@@ -22,12 +22,12 @@ storage, CI/deployer -> Azure control plane.
 | Uploaded content | Separate temporary journal volume, nonroot UID/GID 10001 and directory mode 700, explicit retirement, no raw-journal web download | Journal backups contain bodies; operator must manage retention and keep fictional data. Temporary volume loss also removes replay evidence |
 | TLS private-key exposure | Separate temporary Caddy volume; runtime app does not mount it; no Azure storage account key | Control-plane administrators can access container data. State loss forces certificate reissuance and can hit CA rate limits |
 | Graph throttling / denial of service | 429 Retry-After budget, bounded backoff, call timeouts, semaphore, proxy-client request limiting, bounded sessions/uploads/batches | Global proxy-client limiter can affect several users; not a distributed internet DDoS defense |
-| Accidental production tenant use | Explicit DEMO_TENANT_CONFIRMED, exact tenant authority, five-user startup resolution, delivery disabled by default, visible preview | No API can reliably prove "CDX"; administrator confirmation and tenant governance remain required |
+| Accidental production tenant use | Explicit DEMO_TENANT_CONFIRMED, exact tenant authority, configured-user startup resolution, delivery disabled by default, visible preview | No API can reliably prove "CDX"; administrator confirmation and tenant governance remain required |
 | Configuration drift | Fingerprint binds planned users/resources/tenant/recipient policy to run | Changed plans require explicit review/new scenario; do not mutate stored journals |
 
 ## Required administrator acceptance checks
 
-- Five scoped mailbox tests allow, sixth forbids; no additive grants.
+- All configured mailbox tests allow, excluded mailbox forbids; no additive grants.
 - An unassigned/cross-tenant user cannot sign in. A demo user cannot upload,
   start mail or execute another user's Teams actions.
 - Public port 8000 is unreachable; Caddy's public certificate verifies and HTTP

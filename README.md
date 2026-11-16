@@ -6,7 +6,7 @@ MSAL, Bicep, Azure Container Instances and **Caddy HTTPS reverse proxy**.
 
 Operators upload bounded YAML, inspect resolved identities and planned Graph
 operations, dry-run, authorize real email, inspect per-step progress, cancel
-future actions, and download content-free reports. Five demo users execute their
+future actions, and download content-free reports. Configured demo users execute their
 own Teams channel messages and replies interactively. This is not bulk-mail
 software or a certified production service.
 
@@ -52,7 +52,7 @@ subject to certificate-authority rate limits. For enterprise ingress options see
   this needs outbound download access and a writable Azure CLI configuration
   directory, not sudo. Azure CLI must be authenticated separately from azd.
 - Python 3.12+ for local development; Linux Docker engine for builds/checks.
-- Isolated CDX demo tenant with five licensed, mailbox-enabled users. All Teams
+- Isolated CDX demo tenant with licensed, mailbox-enabled demo users. All Teams
   authors must be members of the mapped existing team/channel.
 - Tenant administrator for app consent, application role grants and enterprise
   app assignments; Exchange administrator for mailbox-scoped Application RBAC.
@@ -65,8 +65,8 @@ subject to certificate-authority rate limits. For enterprise ingress options see
 |---|---|---|
 | Interactive web app | delegated `ChannelMessage.Send` | Normal Teams channel posts/replies as signed-in user. Permission is not intrinsically admin-consent-only, but this deployment uses explicit tenant-admin consent. |
 | Interactive web app | OIDC `openid`, `profile` | MSAL sign-in and identity claims; no mailbox read. |
-| Runtime managed identity | application `User.Read.All` | Resolve the five configured UPNs at startup using `/users` with only `id,userPrincipalName` selected; automatically assigned by the preauthorized deployment identity in postprovision. |
-| Runtime managed identity | Exchange RBAC `Application Mail.Send` | `/users/{id}/sendMail`, scoped to five mailboxes by Exchange admin. **Not an additional unscoped Entra Mail.Send grant.** |
+| Runtime managed identity | application `User.Read.All` | Resolve all configured UPNs at startup using `/users` with only `id,userPrincipalName` selected; automatically assigned by the preauthorized deployment identity in postprovision. |
+| Runtime managed identity | Exchange RBAC `Application Mail.Send` | `/users/{id}/sendMail`, scoped to the configured demo mailboxes by Exchange admin. **Not an additional unscoped Entra Mail.Send grant.** |
 
 Mail.Send supports unattended sending. The preferred authorization is Exchange
 Application RBAC rather than a tenant-wide Entra grant. A documented legacy
@@ -75,8 +75,8 @@ Access Policy; never combine a broad Entra grant with default RBAC and assume
 the latter restricts it. See [permission matrix](docs/graph-permissions.md).
 
 **Teams uses assisted delegated execution (Modes C + A).** Each demo user signs
-in and executes only assigned ready actions. Five distinct authors require five
-interactive authentications. There is no password storage, ROPC,
+in and executes only assigned ready actions. Each distinct author requires an
+interactive authentication. There is no password storage, ROPC,
 `Teamwork.Migrate.All`, beta endpoint, chat support or email-thread reply support.
 
 ## Development and authentication
@@ -98,7 +98,7 @@ See [Entra setup](docs/entra-setup.md) for bootstrap and migration details.
 
 The tracked [config/config.json](config/config.json) is a fictional template,
 not trainer settings. Run [setup.ps1](scripts/setup.ps1) with `-Stage Configure`
-to answer the certificate email, excluded sixth mailbox, five demo-user and
+to answer the certificate email, excluded test mailbox, demo-user keys and
 optional channel questions once. It creates ignored `config/config.local.json`
 with user-only file permissions. Subsequent stages reuse that file.
 Never put real email addresses, tenant mappings or credentials in the tracked
@@ -108,10 +108,16 @@ Configuration is JSON so deployment tools and Cloud Shell need no PowerShell
 YAML module. Scenario documents remain YAML.
 The `x-demo` extension keeps the file compatible with Docker Compose while
 grouping the user and channel mappings.
+`x-demo.users` accepts any nonempty list of distinct user keys and UPNs; five
+users in the template are examples, not a limit. A demo may use 45 users or
+another count. Each scenario's `requiredUsers` selects a subset of configured
+keys for its narrative (for example sales or production); not every configured
+user must participate. Existing upload, activity and per-message recipient
+limits still apply.
 Channel mappings contain a `teamId` UUID and a `channelId`; IDs belong in this
 configuration, not in scenario documents. An empty `channels` object is valid at
 startup, but Teams plans fail until their aliases are configured. For example,
-the channel section looks like this; retain `services` and the five `x-demo.users`:
+the channel section looks like this; retain `services` and your `x-demo.users`:
 
 ```json
 {
@@ -229,7 +235,7 @@ pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Configure
 pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Provision -ConfirmDemoTenant
 pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Entra -InstallModules
 pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Exchange -InstallModules
-# Run only after reviewing the five allowed and one excluded mailbox results.
+# Run only after reviewing all configured and one excluded mailbox results.
 pwsh -NoProfile -File ./scripts/setup.ps1 -Stage Deploy -ConfirmMailboxScope
 ```
 
@@ -336,10 +342,10 @@ remains dormant and Caddy returns HTTP 503 until final deployment.
 1. Confirm postprovision reported runtime Graph `User.Read.All` assigned or
    already assigned. [grant-graph-identity.ps1](scripts/grant-graph-identity.ps1)
    runs automatically; no separate Graph PowerShell login is required.
-2. Configure the five-mailbox scope using
-   [setup-exchange.ps1](scripts/setup-exchange.ps1). Verify all five allowed
-   mailboxes and a sixth forbidden mailbox.
-3. Grant delegated ChannelMessage.Send consent and assign operators/the five
+2. Configure the demo-mailbox scope using
+   [setup-exchange.ps1](scripts/setup-exchange.ps1). Verify all configured
+   mailboxes are allowed and one excluded mailbox is forbidden.
+3. Grant delegated ChannelMessage.Send consent and assign operators/the configured
    demo users or allowed groups to the enterprise app. Use
    [setup-entra.ps1](scripts/setup-entra.ps1) with the generated WEB_CLIENT_ID, or
    the portal. Registration alone intentionally grants neither consent nor access.
@@ -348,19 +354,19 @@ remains dormant and Caddy returns HTTP 503 until final deployment.
 registrations, and enterprise applications are tenant-level objects; deleting
 the resource group or running `azd down` does not remove them. If Exchange reports
 that a scope has the same filter, do not recreate or blindly delete it. Reuse it
-only after verifying its exact five-mailbox membership, then grant the **new
+only after verifying its exact configured-mailbox membership, then grant the **new
 runtime managed identity** its own scoped `Application Mail.Send` assignment.
 The current helper resolves equivalent exact-address scopes automatically and
 uses the actual scope name with a principal-specific assignment; reruns verify
 the existing assignment's owner, role and scope. The existing scope alone is
 not permission for the new identity. Follow the
 [Exchange recovery commands](installtocloudshell.md#recovering-from-an-existing-exchange-scope-after-a-fresh-deployment);
-verify five allowed mailboxes and one excluded mailbox before confirming scope.
+verify all configured mailboxes and one excluded mailbox before confirming scope.
 This error does not prove that the web app registration was reused:
 `WEB_CLIENT_ID` identifies the web app, while `AZURE_IDENTITY_CLIENT_ID` and
 `AZURE_IDENTITY_PRINCIPAL_ID` identify the runtime principal used for Exchange.
 
-For command-line assignments, read the five existing demo users from
+For command-line assignments, read all existing demo users from
 the ignored `config/config.local.json`, rather than maintaining a
 separate UPN list. PowerShell's JSON reader is built in; no converter module is
 needed:
@@ -374,8 +380,8 @@ $demoUpns = @($demoConfig.'x-demo'.users | ForEach-Object {
     }
     $_.userPrincipalName
 })
-if ($demoUpns.Count -ne 5 -or @($demoUpns | Sort-Object -Unique).Count -ne 5) {
-    throw "Private configuration must contain exactly five distinct demo-user UPNs."
+if ($demoUpns.Count -lt 1 -or @($demoUpns | Sort-Object -Unique).Count -ne $demoUpns.Count) {
+    throw "Private configuration must contain one or more distinct demo-user UPNs."
 }
 $demoUpns
 ```
@@ -402,9 +408,8 @@ foreach ($upn in $demoUpns) {
 }
 ```
 
-This reads existing accounts; it does not create users. The published app image
-must contain the same configuration: editing the deployment checkout does not
-update an already published image.
+This reads existing accounts; it does not create users. Redeploy after editing
+the private configuration so ACI receives the updated mappings.
 
 For Azure CLI assignments, use the resolved `$allowedIds` and the generated
 `$webSpId` (`azd env get-value WEB_SERVICE_PRINCIPAL_ID`). Read all pages of
@@ -661,7 +666,7 @@ instead of assuming a new resource group resets Microsoft 365 permissions.
 - Application limits: 200 activities/run, 100 stored run/tombstone records by
   default, up to five concurrent Graph calls (two by default), bounded upload,
   session and execution-batch capacity, and global proxy-client request limiting.
-- Runtime directory `User.Read.All` is broader than the five users. It exists
+- Runtime directory `User.Read.All` is broader than the configured users. It exists
   for required startup resolution, not mailbox content access. Mail access must
   be independently scoped and tested.
 - The small public ACI design is not a WAF. Caddy and app share the ACI group

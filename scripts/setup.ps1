@@ -24,11 +24,25 @@ if ($Stage -eq "Configure" -or ($Stage -eq "Provision" -and -not (Test-Path -Lit
         if ($configPath -eq [IO.Path]::GetFullPath($template)) { throw "Do not store trainer settings in the tracked template." }
         $configuration = Get-Content -LiteralPath $template -Raw | ConvertFrom-Json
         $configuration.'x-setup'.acmeEmail = Read-Host "Email for certificate notices"
-        $configuration.'x-setup'.outOfScopeTestUpn = Read-Host "Existing sixth mailbox UPN (excluded from demo access)"
-        foreach ($user in $configuration.'x-demo'.users) {
-            $user.displayName = Read-Host "Display name for scenario user '$($user.key)'"
-            $user.userPrincipalName = Read-Host "Demo mailbox UPN for '$($user.key)'"
+        $configuration.'x-setup'.outOfScopeTestUpn = Read-Host "Existing excluded mailbox UPN (not a demo user)"
+        $keys = @($configuration.'x-demo'.users.key)
+        $answer = Read-Host "Demo user keys, comma-separated (leave blank for $($keys -join ', '))"
+        if (-not [string]::IsNullOrWhiteSpace($answer)) {
+            $keys = @($answer.Split(',') | ForEach-Object { $_.Trim() })
         }
+        if (@($keys | Where-Object { $_ -cnotmatch '^[a-z][a-z0-9_-]{0,39}$' }).Count -gt 0 -or
+            @($keys | Sort-Object -Unique).Count -ne $keys.Count) {
+            throw "Supply distinct valid demo-user keys."
+        }
+        $configuration.'x-demo'.users = @(
+            foreach ($key in $keys) {
+                [pscustomobject]@{
+                    key = $key
+                    displayName = Read-Host "Display name for scenario user '$key'"
+                    userPrincipalName = Read-Host "Demo mailbox UPN for '$key'"
+                }
+            }
+        )
         $channels = [ordered]@{}
         while ($alias = Read-Host "Teams channel alias (leave blank when finished; email-only is allowed)") {
             if ($channels.Contains($alias)) { throw "Channel aliases must be distinct." }
@@ -132,10 +146,10 @@ try {
             -PrincipalObjectId ([guid](Get-SetupValue "AZURE_IDENTITY_PRINCIPAL_ID")) `
             -DemoUpns $demoUpns -OutOfScopeTestUpn $excludedUpn `
             -ScopeName "$(Get-SetupValue 'AZURE_ENV_NAME')-FiveMailboxes"
-        Write-Host "Review all six results and additive grants before running Deploy -ConfirmMailboxScope."
+        Write-Host "Review all $($demoUpns.Count + 1) results and additive grants before running Deploy -ConfirmMailboxScope."
     } else {
         if (-not $ConfirmMailboxScope) {
-            throw "Review five InScope=True results, the sixth InScope=False, and additive grants; then rerun with -ConfirmMailboxScope."
+            throw "Review $($demoUpns.Count) InScope=True results, the excluded mailbox InScope=False, and additive grants; then rerun with -ConfirmMailboxScope."
         }
         if ((Get-SetupValue "DEMO_TENANT_CONFIRMED") -ne "true") {
             throw "The selected environment must have DEMO_TENANT_CONFIRMED=true."

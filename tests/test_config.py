@@ -1,9 +1,10 @@
 import json
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
-from conftest import FakeGateway
+from conftest import FakeGateway, sign_in
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -89,12 +90,31 @@ def test_nested_arrays_are_not_user_configuration(
         load_config(configuration_path)
 
 
-@pytest.mark.parametrize("mutation", ["missing", "extra", "duplicate-key", "duplicate-upn"])
+@pytest.mark.parametrize("count", [1, 4, 5, 6, 25, 45])
+@pytest.mark.parametrize("injected", [False, True])
+def test_variable_user_configuration(configuration_path: Path, count: int, injected: bool) -> None:
+    configuration = load_json(configuration_path.read_bytes())
+    configuration["x-demo"]["users"] = [
+        {
+            "key": f"user{index}",
+            "displayName": f"User {index}",
+            "userPrincipalName": f"user{index}@example.org",
+        }
+        for index in range(count)
+    ]
+    configuration_path.write_text(json.dumps(configuration), encoding="utf-8")
+    demo_json = json.dumps(configuration["x-demo"]) if injected else None
+    users, _ = load_config(configuration_path, demo_json)
+    assert len(users.users) == count
+    assert users.users[-1].key == f"user{count - 1}"
+
+
+@pytest.mark.parametrize("mutation", ["empty", "extra", "duplicate-key", "duplicate-upn"])
 def test_json_user_constraints(configuration_path: Path, mutation: str) -> None:
     configuration = load_json(configuration_path.read_bytes())
     data = configuration["x-demo"]
-    if mutation == "missing":
-        data["users"].pop()
+    if mutation == "empty":
+        data["users"].clear()
     elif mutation == "extra":
         data["users"].append(data["users"][0])
     elif mutation == "duplicate-key":
@@ -151,6 +171,29 @@ def test_app_loads_json_configuration(
     with TestClient(create_app(settings, fake), base_url="http://localhost:8000") as client:
         assert client.get("/healthz").json() == {"status": "ready"}
         assert client.app.state.users.users[0].userPrincipalName == "adele@example.org"
+
+
+def test_app_displays_all_configured_users(
+    settings: Settings, fake: FakeGateway, configuration_path: Path
+) -> None:
+    data = load_json(configuration_path.read_bytes())
+    data["x-demo"]["users"] = [
+        {
+            "key": f"user{index}",
+            "displayName": f"Demo User {index}",
+            "userPrincipalName": f"user{index}@example.org",
+        }
+        for index in range(45)
+    ]
+    configuration_path.write_text(json.dumps(data), encoding="utf-8")
+    settings.config_file = configuration_path
+    fake.ids = {user["key"]: str(uuid4()) for user in data["x-demo"]["users"]}
+    with TestClient(create_app(settings, fake), base_url="http://localhost:8000") as client:
+        sign_in(client, str(settings.operator_ids[0]), str(settings.tenant_id))
+        page = client.get("/")
+        assert page.status_code == 200
+        assert "45 configured user slots" in page.text
+        assert "Demo User 44" in page.text
 
 
 @pytest.mark.parametrize("mutation", ["valid", "blank", "invalid-email", "demo-mailbox"])

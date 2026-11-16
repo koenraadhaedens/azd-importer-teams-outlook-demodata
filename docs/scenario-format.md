@@ -20,7 +20,7 @@ The [JSON Schema](../schemas/demo-scenario.schema.json) is generated from
 | title / description / author | bounded display text; never executed |
 | createdAt | quoted ISO 8601 timestamp with timezone; metadata, not sent date |
 | tenantAssumptions | 1..20 plain-text tenant preparation statements |
-| requiredUsers | 1..5 distinct configured logical keys; includes every author |
+| requiredUsers | nonempty subset of distinct configured logical keys; includes every author |
 | requiredChannels | distinct configured aliases, required for Teams |
 | dryRun | default true; immutable dry-run-only safety gate when true |
 | metadata / tags | optional bounded labels |
@@ -78,7 +78,9 @@ channels:
 
 The mapping IDs must pass typed validation. No broad team/channel discovery
 permission is requested; Graph checks actual access at execution.
-Startup validates exactly five unique user slots, resolves each UPN, and fails
+Configuration accepts any nonempty list of unique user slots, with no fixed user
+count. A sales, production or other scenario can use only its relevant configured
+users. Startup resolves every configured UPN and fails
 on ambiguous/missing users. A changed user/resource/tenant/recipient-policy
 fingerprint blocks old runs from executing against different mappings.
 

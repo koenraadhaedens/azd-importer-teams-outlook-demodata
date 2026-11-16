@@ -11,7 +11,8 @@ function Assert {
     if (-not $Condition) { throw $Message }
 }
 function Write-TestConfig {
-    param([string]$Email = "notices@example.org", [string]$Excluded = "excluded@example.org")
+    param([string]$Email = "notices@example.org", [string]$Excluded = "excluded@example.org",
+        [int]$UserCount = 5)
     @{
         services = @{
             app = @{ image = "example.azurecr.io/app:latest" }
@@ -20,7 +21,7 @@ function Write-TestConfig {
         "x-setup" = @{ acmeEmail = $Email; outOfScopeTestUpn = $Excluded }
         "x-demo" = @{
             channels = @{}
-            users = @((1..5) | ForEach-Object {
+            users = @((1..$UserCount) | ForEach-Object {
                 @{ key = "user$_"; displayName = "User $_"; userPrincipalName = "user$_@example.org" }
             })
         }
@@ -64,8 +65,8 @@ function global:az {
     }
     if ($args[0] -eq "account") { return $global:setupMock.values.AZURE_TENANT_ID }
     if ($args[0] -eq "ad" -and $args[1] -eq "user") {
-        Assert ($args[4] -match '^user([1-5])@example.org$') "Only the five demo users should be assigned"
-        return "00000000-0000-0000-0000-00000000001$($Matches[1])"
+        Assert ($args[4] -match '^user([0-9]+)@example.org$') "Only configured demo users should be assigned"
+        return "00000000-0000-0000-0000-$(([int]$Matches[1] + 100).ToString('D12'))"
     }
     throw "Unexpected Azure call: $args"
 }
@@ -159,9 +160,9 @@ try {
     Expect-Failure @{ Stage = "Provision"; ConfirmDemoTenant = $true } "x-setup.acmeEmail"
     Assert ($global:setupMock.calls.Count -eq 0) "Invalid configuration must fail before Azure operations"
     Write-TestConfig -Excluded "USER1@EXAMPLE.ORG"
-    Expect-Failure @{ Stage = "Exchange" } "existing sixth mailbox"
+    Expect-Failure @{ Stage = "Exchange" } "existing excluded mailbox"
     Write-TestConfig -Excluded ""
-    Expect-Failure @{ Stage = "Exchange" } "existing sixth mailbox"
+    Expect-Failure @{ Stage = "Exchange" } "existing excluded mailbox"
 
     Reset-State
     Expect-Failure @{ Stage = "Deploy" } "ConfirmMailboxScope"
@@ -186,9 +187,18 @@ try {
     Assert ($global:setupMock.exchangePrincipal.AppId -eq $global:setupMock.values.AZURE_IDENTITY_CLIENT_ID -and
         $global:setupMock.exchangePrincipal.ObjectId -eq $global:setupMock.values.AZURE_IDENTITY_PRINCIPAL_ID) "Use runtime identity IDs, not the web app ID"
 
+    foreach ($count in @(1, 6, 25, 45)) {
+        Reset-State
+        Write-TestConfig -UserCount $count
+        & $scriptPath -Stage Entra -Config $configPath
+        Assert ($global:setupMock.assigned.Count -eq ($count + 1)) "Assign every configured demo user and the operator"
+        & $scriptPath -Stage Exchange -Config $configPath | Out-Null
+        Assert ($global:setupMock.tested.Count -eq ($count + 1)) "Test every configured mailbox plus the excluded mailbox"
+    }
+
     Reset-State
     Remove-Item -LiteralPath $configPath
-    foreach ($answer in @("notices@example.org", "excluded@example.org")) {
+    foreach ($answer in @("notices@example.org", "excluded@example.org", "")) {
         $global:setupMock.prompts.Enqueue($answer)
     }
     foreach ($index in 1..5) {
@@ -202,6 +212,21 @@ try {
     Assert ($private.'x-demo'.users[0].userPrincipalName -eq "user1@example.org") "Persist entered demo users"
     & $scriptPath -Stage Configure -Config $configPath
     Assert ($global:setupMock.prompts.Count -eq 0) "Reuse settings without asking again"
+
+    Reset-State
+    Remove-Item -LiteralPath $configPath
+    foreach ($answer in @("notices@example.org", "excluded@example.org",
+        "sales, production, logistics, finance, support, management",
+        "Sales", "sales@example.org", "Production", "production@example.org",
+        "Logistics", "logistics@example.org", "Finance", "finance@example.org",
+        "Support", "support@example.org", "Management", "management@example.org", "")) {
+        $global:setupMock.prompts.Enqueue($answer)
+    }
+    & $scriptPath -Stage Configure -Config $configPath
+    $private = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+    Assert ($private.'x-demo'.users.Count -eq 6 -and
+        $private.'x-demo'.users[-1].key -eq "management") "Configure a custom variable-length user list"
+    Assert ($global:setupMock.prompts.Count -eq 0) "Collect all custom users and channel choices"
     if (-not $IsWindows) {
         Assert ([IO.File]::GetUnixFileMode($configPath) -eq
             ([IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite)) "Private file must be owner-only"

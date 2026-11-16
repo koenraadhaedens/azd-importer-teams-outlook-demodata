@@ -52,7 +52,7 @@ parameter file, removed in `finally`. It does not build or publish images.
 The Docker context excludes the entire configuration directory; the runtime image
 copies no configuration files. A secure ARM parameter supplies user/channel JSON
 to ACI as `DEMO_CONFIG_JSON` with `secureValue`. The certificate email is another
-secure parameter/environment value. The sixth test mailbox remains local to the
+secure parameter/environment value. The excluded test mailbox remains local to the
 administrator. Runtime JSON is bounded and strictly validated; malformed injected
 data never falls back to local configuration. Local development/offline validation
 can explicitly read a private file instead.
@@ -77,7 +77,7 @@ a tag use `latest`; immutable release tags/digests are preferable for updates.
 
 ## Data flow and persistence
 
-Startup uses ACI's user-assigned managed identity and resolves five UPNs with
+Startup uses ACI's user-assigned managed identity and resolves all configured UPNs with
 Graph. Failure prevents readiness. The web app uses a managed-identity token for
 AzureADTokenExchange as its federated MSAL client assertion; there is no stored
 web credential or Key Vault read. A pre-authorized deployment identity creates

@@ -1,6 +1,6 @@
 ---
 name: demo-scenario-creator
-description: "Use when creating fictional Microsoft 365 CDX demo scenario YAML for the azd-m365-demo-loader, including five-user email, assisted Teams channel conversations, chronology, dependencies, and schema validation."
+description: "Use when creating fictional Microsoft 365 CDX demo scenario YAML for the azd-m365-demo-loader, including email with a variable set of configured users, assisted Teams channel conversations, chronology, dependencies, and schema validation."
 ---
 
 # Demo scenario creator
@@ -13,10 +13,13 @@ conversations, not for sending messages yourself. The output is data, never code
 
 ## Inputs
 
-Required: fictional business topic, desired narrative, five configured user keys,
+Required: fictional business topic, desired narrative, configured user keys,
 and allowed channel aliases (if any Teams messages are requested).
 Default logical keys are **adele, alex, christie, diego, megan**. If the operator
-changed configuration, use only the supplied replacement keys, exactly five.
+changed configuration, use only the supplied keys. There is no fixed user count:
+the configuration may contain 45 users or another number. Select the relevant
+participants for the demo topic (for example sales or production); do not force
+every configured user into every scenario.
 
 Optional: title, scenario ID, author, timezone-aware creation date, tags,
 plain-text or formatting-only HTML emails, recipient lists, importance, relative
@@ -42,7 +45,7 @@ Unsupported: email reply APIs/thread preservation, chat, attachments, calendar,
 historical timestamps, arbitrary recipients, bots, scripts, shell, expressions,
 password collection, and silent Teams impersonation. Emails are sent by a
 scoped application. Teams messages require the assigned user to sign in and
-click execution; five authors require five interactive sign-ins. Do not request
+click execution; each author requires their own interactive sign-in. Do not request
 `Teamwork.Migrate.All` or claim migration APIs send normal demo messages.
 
 ## Writing and safety rules
@@ -51,8 +54,8 @@ click execution; five authors require five interactive sign-ins. Do not request
    access/refresh tokens, tenant credentials, real confidential data, or tenant
    object IDs. Do not include real customer or employee information.
 2. `requiredUsers` lists every activity author and must be a subset of the
-   configured five logical keys. All `to` and `cc` entries are logical keys from
-   those five users, never email addresses. User names belong to configuration.
+   configured logical keys. All `to` and `cc` entries are logical keys from
+   the configured users, never email addresses. User names belong to configuration.
 3. Use channel aliases in `requiredChannels` and activities, never Team/channel
    object IDs. Every used alias must be supplied by the operator and declared.
 4. IDs and keys match `[a-z][a-z0-9_-]{0,39}`. IDs are unique within the scenario.

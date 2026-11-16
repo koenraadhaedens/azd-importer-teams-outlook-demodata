@@ -9,14 +9,14 @@ Dependencies can cross users. A memory-only background worker waits and resumes
 each authorized author's work without further browser clicks. MSAL refreshes
 tokens before sends using `offline_access`; when interaction is required the
 worker pauses for sign-in. Pending actions remain visible until the appropriate
-user authorizes them. The application never silently impersonates the five users.
+user authorizes them. The application never silently impersonates demo users.
 Chat creation and email reply/thread APIs are deliberately unsupported in v1.
 No `Teamwork.Migrate.All`, bot, beta endpoint, or password grant is used.
 
 ## 2. Separate interactive and application identities
 
 An Entra confidential web app performs OIDC sign-in and delegated Teams calls.
-A user-assigned managed identity resolves the five users using application
+A user-assigned managed identity resolves all configured users using application
 `User.Read.All` and sends mail through Graph `/users/{id}/sendMail`.
 Runtime is Azure ACI only; local development is limited to offline/mock checks.
 Managed identity conveys no Graph permissions by itself.
@@ -39,7 +39,7 @@ user assignments and Exchange scope remain explicit administrator steps.
 Runtime receives no app-registration or app-role-assignment administration privileges.
 
 Prefer Exchange Online **Application RBAC**, assigning `Application Mail.Send`
-only for a scope containing the five mailboxes. Do not additionally grant the
+only for a scope containing the configured demo mailboxes. Do not additionally grant the
 same principal unscoped Entra `Mail.Send`: those grants are additive and defeat
 the RBAC boundary. Legacy Application Access Policy guidance is documented as
 an alternative, not mixed into the default.
@@ -49,7 +49,7 @@ an alternative, not mixed into the default.
 Single-tenant authority; validate MSAL OIDC results, tenant, object ID, and an
 explicit object-ID allowlist or directly emitted group claim. Group overage
 fails closed (no directory-wide group lookup). Operators upload, start mail,
-cancel and retire runs; the five resolved demo object IDs can perform only their
+cancel and retire runs; the resolved demo object IDs can perform only their
 assigned Teams actions. No auth bypass, including in local development.
 
 ## 4. Small ACI HTTPS deployment, without fictitious native ACI TLS

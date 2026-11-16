@@ -22,14 +22,14 @@ class DemoUser(StrictModel):
 
 
 class Users(StrictModel):
-    users: Annotated[list[DemoUser], Field(min_length=5, max_length=5)]
+    users: Annotated[list[DemoUser], Field(min_length=1)]
 
     @model_validator(mode="after")
     def unique(self) -> Self:
-        if len({u.key for u in self.users}) != 5:
-            raise ValueError("Five distinct user keys are required")
-        if len({u.userPrincipalName.lower() for u in self.users}) != 5:
-            raise ValueError("Five distinct UPNs are required")
+        if len({u.key for u in self.users}) != len(self.users):
+            raise ValueError("Distinct user keys are required")
+        if len({u.userPrincipalName.lower() for u in self.users}) != len(self.users):
+            raise ValueError("Distinct UPNs are required")
         return self
 
 
@@ -118,7 +118,7 @@ class Scenario(StrictModel):
     author: Annotated[str, Field(min_length=1, max_length=100)]
     createdAt: datetime
     tenantAssumptions: Annotated[list[str], Field(min_length=1, max_length=20)]
-    requiredUsers: Annotated[list[Key], Field(min_length=1, max_length=5)]
+    requiredUsers: Annotated[list[Key], Field(min_length=1)]
     requiredChannels: Annotated[list[Key], Field(max_length=20)] = Field(default_factory=list)
     dryRun: bool = True
     metadata: dict[str, Annotated[str, Field(max_length=200)]] = Field(default_factory=dict)

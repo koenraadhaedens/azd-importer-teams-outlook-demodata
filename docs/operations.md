@@ -2,8 +2,8 @@
 
 ## Before enabling delivery
 
-Confirm the CDX tenant, licenses, channel membership, five resolved object IDs,
-operator allowlist and scope tests. Verify the sixth test mailbox is out of scope.
+Confirm the CDX tenant, licenses, channel membership, all resolved demo object IDs,
+operator allowlist and scope tests. Verify the excluded test mailbox is out of scope.
 Remove any broad Entra Mail.Send assignment from the runtime principal.
 Keep external recipients disabled. Run the sample dry-run and inspect each
 planned Graph operation before approving a new executable scenario.

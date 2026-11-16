@@ -124,8 +124,8 @@ class GraphGateway:
             ):
                 raise GraphError(f"Configured user slot {user.key} could not be resolved uniquely")
             resolved[user.key] = matches[0]["id"]
-        if len(set(resolved.values())) != 5:
-            raise GraphError("The five configured users must resolve to distinct object IDs")
+        if len(set(resolved.values())) != len(users.users):
+            raise GraphError("Configured users must resolve to distinct object IDs")
         self.resolved = resolved
         return resolved
 

@@ -6,7 +6,7 @@ requested. Azure RBAC/managed identity does **not** imply Graph permission.
 | Runtime operation | Endpoint | Permission / identity |
 |---|---|---|
 | Resolve configured UPN | `GET /users?$filter=userPrincipalName eq '...'&$select=id,userPrincipalName&$top=2` | Application `User.Read.All`, runtime principal |
-| Send demo email | `POST /users/{resolved-id}/sendMail` | Exchange `Application Mail.Send`, runtime principal, five-mailbox custom resource scope |
+| Send demo email | `POST /users/{resolved-id}/sendMail` | Exchange `Application Mail.Send`, runtime principal, configured-mailbox custom resource scope |
 | Channel root message | `POST /teams/{team}/channels/{channel}/messages` | Delegated `ChannelMessage.Send`, interactive web app |
 | Channel reply | `POST /teams/{team}/channels/{channel}/messages/{parent}/replies` | Delegated `ChannelMessage.Send`, interactive web app |
 | Sign-in and delegated renewal | tenant-specific authorize/token endpoints | OIDC `openid`, `profile`, `offline_access` |
@@ -37,9 +37,9 @@ and enterprise-app assignment, not arbitrary user self-consent.
 
 Use [setup-exchange.ps1](../scripts/setup-exchange.ps1) for the runtime managed
 identity's client ID and **enterprise service principal object ID**, not an app
-registration object ID. It resolves the five UPNs to primary SMTP addresses,
+registration object ID. It resolves all configured UPNs to primary SMTP addresses,
 defines an exact mailbox management scope, creates the Exchange pointer, assigns
-`Application Mail.Send`, and displays authorization tests for five allowed
+`Application Mail.Send`, and displays authorization tests for all configured
 mailboxes plus one out-of-scope mailbox.
 
 **Exchange RBAC and Entra grants are additive.** Do not grant that principal
@@ -55,7 +55,7 @@ not create drafts or read Sent Items to infer successful delivery.
 
 Where an administrator deliberately chooses an existing Application Access Policy
 setup: grant Graph application `Mail.Send` with admin consent; create a dedicated
-mail-enabled security group containing only the five mailboxes; use Exchange
+mail-enabled security group containing only the configured demo mailboxes; use Exchange
 `New-ApplicationAccessPolicy -AppId <runtime-client-id> -PolicyScopeGroupId
 <group-address> -AccessRight RestrictAccess` and verify allowed/denied mailboxes
 with `Test-ApplicationAccessPolicy`. Policy propagation may be delayed.

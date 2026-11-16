@@ -6,7 +6,9 @@ param(
     [string]$ScopeName = "M365DemoLoaderFiveMailboxes"
 )
 $ErrorActionPreference = "Stop"
-if (@($DemoUpns | Sort-Object -Unique).Count -ne 5) { throw "Supply exactly five distinct demo UPNs" }
+if ($DemoUpns.Count -lt 1 -or @($DemoUpns | Sort-Object -Unique).Count -ne $DemoUpns.Count) {
+    throw "Supply one or more distinct demo UPNs"
+}
 if ($OutOfScopeTestUpn -in $DemoUpns) { throw "Out-of-scope test mailbox must not be a demo mailbox" }
 if (-not (Get-Module ExchangeOnlineManagement -ListAvailable)) {
     throw "Install-Module ExchangeOnlineManagement -Scope CurrentUser"
@@ -20,7 +22,7 @@ foreach ($upn in $DemoUpns + $OutOfScopeTestUpn) {
     $mailboxes[$upn] = $mailbox.PrimarySmtpAddress.ToString().ToLowerInvariant()
 }
 $addresses = @($DemoUpns | ForEach-Object { $mailboxes[$_] } | Sort-Object -Unique)
-if ($addresses.Count -ne 5) { throw "Demo UPNs must resolve to five distinct mailboxes" }
+if ($addresses.Count -ne $DemoUpns.Count) { throw "Demo UPNs must resolve to distinct mailboxes" }
 if ($mailboxes[$OutOfScopeTestUpn] -in $addresses) {
     throw "Out-of-scope test UPN resolves to a demo mailbox"
 }
@@ -30,7 +32,7 @@ if ($principals.Count -eq 0) {
 } elseif ($principals.Count -ne 1 -or [string]$principals[0].ObjectId -ne [string]$PrincipalObjectId) {
     throw "Existing Exchange service principal conflicts with the runtime identity; inspect manually."
 }
-# Scope exact primary SMTP addresses resolved from the five UPNs, not a broad domain.
+# Scope exact primary SMTP addresses resolved from configured UPNs, not a broad domain.
 $filter = ($addresses | ForEach-Object { "PrimarySmtpAddress -eq '$($_.Replace("'", "''"))'" }) -join " -or "
 
 function Test-ExactMailboxScope {
@@ -41,13 +43,13 @@ function Test-ExactMailboxScope {
     $pattern = "(?i)PrimarySmtpAddress\s+-eq\s+'([^']+)'"
     $clauses = [regex]::Matches([string]$Candidate.RecipientFilter, $pattern)
     $remainder = [regex]::Replace([string]$Candidate.RecipientFilter, $pattern, "")
-    if ($clauses.Count -ne 5 -or $remainder -notmatch '^(?i:[\s()]|-or)*$') {
+    if ($clauses.Count -ne $addresses.Count -or $remainder -notmatch '^(?i:[\s()]|-or)*$') {
         return $false
     }
     $candidateAddresses = @($clauses | ForEach-Object {
         $_.Groups[1].Value.ToLowerInvariant()
     } | Sort-Object -Unique)
-    return $candidateAddresses.Count -eq 5 -and
+    return $candidateAddresses.Count -eq $addresses.Count -and
         -not (Compare-Object -ReferenceObject $addresses -DifferenceObject $candidateAddresses)
 }
 
@@ -57,7 +59,7 @@ if ($namedScopes.Count -gt 1) { throw "Ambiguous management scope name; inspect 
 if ($namedScopes.Count -eq 1) {
     $scope = $namedScopes[0]
     if (-not (Test-ExactMailboxScope $scope)) {
-        throw "Requested scope does not select exactly the five demo addresses; existing scopes will not be changed."
+        throw "Requested scope does not select exactly the configured demo addresses; existing scopes will not be changed."
     }
 } else {
     $matchingScopes = @($scopes | Where-Object { Test-ExactMailboxScope $_ })
@@ -91,6 +93,6 @@ foreach ($upn in $DemoUpns) {
     Test-ServicePrincipalAuthorization -Identity $PrincipalObjectId -Resource $upn | Format-Table
 }
 Test-ServicePrincipalAuthorization -Identity $PrincipalObjectId -Resource $OutOfScopeTestUpn | Format-Table
-Write-Warning "Review InScope results: five true, out-of-scope false. Grants can take time to propagate."
+Write-Warning "Review InScope results: $($DemoUpns.Count) true, out-of-scope false. Grants can take time to propagate."
 Write-Warning "Verify no other Exchange assignments or Entra Mail.Send grant broaden access."
 Write-Host "Only after verification set MAILBOX_SCOPE_CONFIRMED=true."

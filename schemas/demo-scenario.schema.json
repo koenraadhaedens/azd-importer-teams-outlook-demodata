@@ -262,7 +262,6 @@
         "pattern": "^[a-z][a-z0-9_-]{0,39}$",
         "type": "string"
       },
-      "maxItems": 5,
       "minItems": 1,
       "title": "Requiredusers",
       "type": "array"
